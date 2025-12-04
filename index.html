@@ -11,8 +11,6 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500&display=swap');
-
 body {
   font-family: Arial, sans-serif;
   background-color: #121212;
@@ -25,14 +23,11 @@ body {
 }
 
 .chart-panel {
-  width: 450px;
+  width: 500px;
   background: #1e1e1e;
   padding: 20px;
   border-radius: 12px;
   border: 2px solid #444;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
   margin-right: 20px;
 }
 #chartContainer { width: 100%; }
@@ -65,52 +60,11 @@ h1 {
   gap: 60px;
 }
 
+/* Canvas gauge styling */
 .gauge-container {
   position: relative;
   width: 300px;
   height: 300px;
-}
-
-.gauge-bg {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: #1e1e1e;
-  border: 16px solid #444;
-}
-
-.arc {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  clip: rect(0px, 300px, 300px, 150px);
-}
-
-.arc-fill {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  border: 16px solid green; /* default color */
-  clip: rect(0px, 150px, 300px, 0px);
-  transform: rotate(-120deg);
-  transform-origin: 50% 50%;
-  transition: transform 0.3s ease-out, border-color 0.3s ease-out;
-}
-
-.needle {
-  position: absolute;
-  width: 6px;
-  height: 140px;
-  background: #ff4081;
-  top: 50%;
-  left: 50%;
-  transform-origin: bottom center;
-  border-radius: 3px;
-  transform: rotate(-120deg);
-  transition: transform 0.3s ease-out;
 }
 
 .gauge-value {
@@ -127,7 +81,7 @@ h1 {
   position: absolute;
   width: 100%;
   text-align: center;
-  bottom: 20px;
+  bottom: 15px;
   font-size: 1.2em;
   font-weight: bold;
 }
@@ -152,20 +106,13 @@ h1 {
 <div class="warning" id="warningText">Place your finger on the sensor</div>
 
 <div class="gauges">
-  <!-- BPM Gauge -->
   <div class="gauge-container">
-    <div class="gauge-bg"></div>
-    <div class="arc"><div class="arc-fill" id="bpmArc"></div></div>
-    <div class="needle" id="bpmNeedle"></div>
+    <canvas id="bpmGauge" width="300" height="300"></canvas>
     <div class="gauge-value" id="bpmValue">0</div>
     <div class="gauge-status" id="bpmStatus">--</div>
   </div>
-
-  <!-- SpO2 Gauge -->
   <div class="gauge-container">
-    <div class="gauge-bg"></div>
-    <div class="arc"><div class="arc-fill" id="spo2Arc"></div></div>
-    <div class="needle" id="spo2Needle"></div>
+    <canvas id="spo2Gauge" width="300" height="300"></canvas>
     <div class="gauge-value" id="spo2Value">0%</div>
     <div class="gauge-status" id="spo2Status">--</div>
   </div>
@@ -184,7 +131,7 @@ const firebaseConfig = {
     appId: "1:503689688190:web:2a5e729b1768088e46942f",
     measurementId: "G-99498TBNW5"
 };
-const app = firebase.initializeApp(firebaseConfig);
+firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 // DOM
@@ -192,13 +139,13 @@ const bpmValue = document.getElementById('bpmValue');
 const spo2Value = document.getElementById('spo2Value');
 const bpmStatus = document.getElementById('bpmStatus');
 const spo2Status = document.getElementById('spo2Status');
-const bpmNeedle = document.getElementById('bpmNeedle');
-const spo2Needle = document.getElementById('spo2Needle');
 const warningText = document.getElementById('warningText');
-const bpmArc = document.getElementById('bpmArc');
-const spo2Arc = document.getElementById('spo2Arc');
 
-// Helpers
+// Gauges canvas
+const bpmCtx = document.getElementById('bpmGauge').getContext('2d');
+const spo2Ctx = document.getElementById('spo2Gauge').getContext('2d');
+
+// Helper functions
 function getBPMStatus(bpm){
     if(bpm<60) return {text:"Low",class:"low",color:"#ff4444"};
     if(bpm<=100) return {text:"Normal",class:"normal",color:"#00e676"};
@@ -209,30 +156,59 @@ function getSpO2Status(spo2){
     if(spo2<=100) return {text:"Normal",class:"normal",color:"#00e676"};
     return {text:"High",class:"high",color:"#ffab00"};
 }
-function valueToAngle(value,max){return Math.min(Math.max((value/max)*240-120,-120),120);}
-function arcAngle(value,max){ return (value/max)*240;}
 
-// Animate gauge
-let currentBPMAngle = -120, currentSpO2Angle = -120;
-function animateNeedle(needle,targetAngle,currentAngleRef){
-    const diff=targetAngle-currentAngleRef.value;
-    if(Math.abs(diff)<0.5) return;
-    currentAngleRef.value+=diff*0.1;
-    needle.style.transform=`rotate(${currentAngleRef.value}deg)`;
-    requestAnimationFrame(()=>animateNeedle(needle,targetAngle,currentAngleRef));
-}
-function animateArc(arc,targetAngle,color){ 
-    arc.style.transform=`rotate(${targetAngle-120}deg)`; 
-    arc.style.borderColor=color;
+// Draw clock-style gauge
+function drawGauge(ctx,value,max,color){
+    ctx.clearRect(0,0,300,300);
+    const centerX=150,centerY=150,radius=120;
+    const startAngle=-Math.PI*0.75;
+    const endAngle=Math.PI*0.75;
+    const angle=startAngle + (value/max)*(Math.PI*1.5);
+
+    // Background arc
+    ctx.beginPath();
+    ctx.arc(centerX,centerY,radius,startAngle,endAngle);
+    ctx.lineWidth=20;
+    ctx.strokeStyle="#444";
+    ctx.stroke();
+
+    // Value arc
+    ctx.beginPath();
+    ctx.arc(centerX,centerY,radius,startAngle,angle);
+    ctx.strokeStyle=color;
+    ctx.lineWidth=20;
+    ctx.stroke();
+
+    // Draw ticks
+    for(let i=0;i<=10;i++){
+        const tickAngle=startAngle + i/10*(Math.PI*1.5);
+        const x1=centerX+Math.cos(tickAngle)*(radius-10);
+        const y1=centerY+Math.sin(tickAngle)*(radius-10);
+        const x2=centerX+Math.cos(tickAngle)*(radius+10);
+        const y2=centerY+Math.sin(tickAngle)*(radius+10);
+        ctx.beginPath();
+        ctx.moveTo(x1,y1);
+        ctx.lineTo(x2,y2);
+        ctx.strokeStyle="#888";
+        ctx.lineWidth=2;
+        ctx.stroke();
+        // numbers
+        ctx.font="14px Arial";
+        ctx.fillStyle="#fff";
+        ctx.textAlign="center";
+        ctx.textBaseline="middle";
+        const num=i*max/10;
+        const tx=centerX+Math.cos(tickAngle)*(radius+25);
+        const ty=centerY+Math.sin(tickAngle)*(radius+25);
+        ctx.fillText(Math.round(num),tx,ty);
+    }
 }
 
 // Chart setup
 const ctx=document.getElementById('trendChart').getContext('2d');
-const chartData={labels:[],datasets:[
-    {label:'BPM',data:[],borderColor:'#00e676',tension:0.3,fill:false},
-    {label:'SpO₂',data:[],borderColor:'#00b0ff',tension:0.3,fill:false}
-]};
+const chartData={labels:[],datasets:[{label:'BPM',data:[],borderColor:'#00e676',tension:0.3,fill:false},{label:'SpO₂',data:[],borderColor:'#00b0ff',tension:0.3,fill:false}]};
 const trendChart=new Chart(ctx,{type:'line',data:chartData,options:{responsive:true,scales:{y:{min:0,max:150,ticks:{color:'#fff'}},x:{ticks:{color:'#fff'}}},plugins:{legend:{labels:{color:'#fff'}}}}});
+
 function updateChart(bpm,spo2,timestamp){
     if(chartData.labels.length>30){
         chartData.labels.shift();
@@ -252,12 +228,10 @@ db.ref('BPM').on('value',snapshot=>{
     const status=getBPMStatus(bpm);
     bpmStatus.innerText=status.text;
     bpmStatus.className='gauge-status '+status.class;
-    animateNeedle(bpmNeedle,valueToAngle(bpm,150),{value:currentBPMAngle});
-    animateArc(bpmArc,arcAngle(bpm,150),status.color);
-    currentBPMAngle=valueToAngle(bpm,150);
+    drawGauge(bpmCtx,bpm,150,status.color);
     warningText.style.display=(bpm===0)?'block':'none';
     const currentSpO2=parseInt(spo2Value.innerText)||0;
-    updateChart(bpm,currentSpO2,new Date().toLocaleTimeString());
+    updateChart(bpm,currentSpO2,new Date().toLocaleString());
 });
 
 db.ref('SpO2').on('value',snapshot=>{
@@ -266,11 +240,9 @@ db.ref('SpO2').on('value',snapshot=>{
     const status=getSpO2Status(spo2);
     spo2Status.innerText=status.text;
     spo2Status.className='gauge-status '+status.class;
-    animateNeedle(spo2Needle,valueToAngle(spo2,100),{value:currentSpO2Angle});
-    animateArc(spo2Arc,arcAngle(spo2,100),status.color);
-    currentSpO2Angle=valueToAngle(spo2,100);
+    drawGauge(spo2Ctx,spo2,100,status.color);
     const currentBPM=parseInt(bpmValue.innerText)||0;
-    updateChart(currentBPM,spo2,new Date().toLocaleTimeString());
+    updateChart(currentBPM,spo2,new Date().toLocaleString());
 });
 </script>
 
