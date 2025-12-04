@@ -7,6 +7,9 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500&display=swap');
 
@@ -17,20 +20,19 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      height: 100vh;
+      justify-content: flex-start;
+      min-height: 100vh;
       margin: 0;
+      padding-top: 20px;
     }
 
-    h1 {
-      color: #ff4081;
-      margin-bottom: 30px;
-    }
+    h1 { color: #ff4081; margin-bottom: 20px; }
 
     .gauge-container {
       display: flex;
       justify-content: center;
-      gap: 50px;
+      gap: 60px;
+      margin-bottom: 20px;
     }
 
     .gauge {
@@ -38,27 +40,53 @@
       width: 180px;
       height: 180px;
       border-radius: 50%;
-      background: conic-gradient(#00e676 0deg, #00e676 0deg, #444 0deg 360deg);
+      background: conic-gradient(#ff4444 0deg 72deg, #00e676 72deg 240deg, #ffab00 240deg 360deg);
       display: flex;
       align-items: center;
       justify-content: center;
       font-family: 'Orbitron', monospace;
-      font-size: 2em;
       color: #fff;
       box-shadow: 0 0 20px #000;
+      border: 8px solid #444;
+      overflow: hidden;
     }
 
-    .gauge .status {
+    .sweep {
       position: absolute;
-      bottom: 10px;
-      font-size: 1em;
-      font-weight: bold;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: conic-gradient(rgba(255,255,255,0.1) 0deg, rgba(255,255,255,0) 60deg);
+      transform: rotate(0deg);
+      pointer-events: none;
     }
 
-    .low { color: #ff4444; }
-    .normal { color: #00e676; }
+    .needle {
+      position: absolute;
+      width: 4px;
+      height: 80px;
+      background-color: #ff4081;
+      top: 50%;
+      left: 50%;
+      transform-origin: bottom center;
+      transform: rotate(-120deg);
+      border-radius: 2px;
+      z-index: 2;
+    }
+
+    .value { position: absolute; font-size: 2em; text-align: center; }
+    .status { position: absolute; bottom: 30px; font-size: 1em; font-weight: bold; }
+    .timestamp { position: absolute; bottom: 10px; font-size: 0.8em; color: #aaa; text-align: center; width: 100%; }
+    .low { color: #ff4444; } 
+    .normal { color: #00e676; } 
     .high { color: #ffab00; }
-    .warning { color: #ff4444; font-size: 1em; margin-top: 10px; }
+    .warning { color: #ff4444; font-size: 1em; margin-top: 20px; animation: blink 1s infinite; }
+    @keyframes blink { 0%,50%,100%{opacity:1;}25%,75%{opacity:0;} }
+
+    #chartContainer {
+      width: 90%; max-width: 800px; margin-top: 20px;
+      background: #1e1e1e; padding: 20px; border-radius: 12px; border: 2px solid #444;
+    }
 </style>
 </head>
 <body>
@@ -67,88 +95,138 @@
 
 <div class="gauge-container">
   <div class="gauge" id="bpmGauge">
-    <div id="bpmValue">0</div>
+    <div class="sweep" id="bpmSweep"></div>
+    <div class="needle" id="bpmNeedle"></div>
+    <div class="value" id="bpmValue">0</div>
     <div class="status" id="bpmStatus">--</div>
+    <div class="timestamp" id="bpmTime">--:--:--</div>
   </div>
   <div class="gauge" id="spo2Gauge">
-    <div id="spo2Value">0%</div>
+    <div class="sweep" id="spo2Sweep"></div>
+    <div class="needle" id="spo2Needle"></div>
+    <div class="value" id="spo2Value">0%</div>
     <div class="status" id="spo2Status">--</div>
+    <div class="timestamp" id="spo2Time">--:--:--</div>
   </div>
 </div>
 
 <div class="warning" id="warningText">Place your finger on the sensor</div>
 
+<div id="chartContainer">
+  <canvas id="trendChart"></canvas>
+</div>
+
 <script>
-    // Firebase configuration (Updated)
-    const firebaseConfig = {
-        apiKey: "AIzaSyB8yZZHmjx4ExnkeV_V5iieSK5tSdY_Uqo",
-        authDomain: "bpmhealth-813a8.firebaseapp.com",
-        databaseURL: "https://bpmhealth-813a8-default-rtdb.firebaseio.com",
-        projectId: "bpmhealth-813a8",
-        storageBucket: "bpmhealth-813a8.firebasestorage.app",
-        messagingSenderId: "503689688190",
-        appId: "1:503689688190:web:2a5e729b1768088e46942f",
-        measurementId: "G-99498TBNW5"
-    };
+const firebaseConfig = {
+    apiKey: "AIzaSyB8yZZHmjx4ExnkeV_V5iieSK5tSdY_Uqo",
+    authDomain: "bpmhealth-813a8.firebaseapp.com",
+    databaseURL: "https://bpmhealth-813a8-default-rtdb.firebaseio.com",
+    projectId: "bpmhealth-813a8",
+    storageBucket: "bpmhealth-813a8.firebasestorage.app",
+    messagingSenderId: "503689688190",
+    appId: "1:503689688190:web:2a5e729b1768088e46942f",
+    measurementId: "G-99498TBNW5"
+};
+const app = firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
-    // Initialize Firebase
-    const app = firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+const bpmValue = document.getElementById('bpmValue');
+const spo2Value = document.getElementById('spo2Value');
+const bpmStatus = document.getElementById('bpmStatus');
+const spo2Status = document.getElementById('spo2Status');
+const bpmNeedle = document.getElementById('bpmNeedle');
+const spo2Needle = document.getElementById('spo2Needle');
+const bpmTime = document.getElementById('bpmTime');
+const spo2Time = document.getElementById('spo2Time');
+const warningText = document.getElementById('warningText');
+const bpmSweep = document.getElementById('bpmSweep');
+const spo2Sweep = document.getElementById('spo2Sweep');
 
-    // DOM elements
-    const bpmValue = document.getElementById('bpmValue');
-    const spo2Value = document.getElementById('spo2Value');
-    const bpmStatus = document.getElementById('bpmStatus');
-    const spo2Status = document.getElementById('spo2Status');
-    const bpmGauge = document.getElementById('bpmGauge');
-    const spo2Gauge = document.getElementById('spo2Gauge');
-    const warningText = document.getElementById('warningText');
+function getBPMStatus(bpm) {
+    if (bpm === 0) return { text: "No Finger", class: "low" };
+    if (bpm < 60) return { text: "Low", class: "low" };
+    if (bpm <= 100) return { text: "Normal", class: "normal" };
+    return { text: "High", class: "high" };
+}
+function getSpO2Status(spo2) {
+    if (spo2 === 0) return { text: "No Finger", class: "low" };
+    if (spo2 < 90) return { text: "Low", class: "low" };
+    if (spo2 <= 100) return { text: "Normal", class: "normal" };
+    return { text: "High", class: "high" };
+}
 
-    // Helper functions
-    function getBPMStatus(bpm) {
-        if (bpm === 0) return { text: "No Finger", class: "low" };
-        if (bpm < 60) return { text: "Low", class: "low" };
-        if (bpm <= 100) return { text: "Normal", class: "normal" };
-        return { text: "High", class: "high" };
+function valueToAngle(value, maxValue) { return Math.min(Math.max((value / maxValue) * 240 - 120, -120), 120); }
+
+let currentBPMAngle = -120, currentSpO2Angle = -120;
+function animateNeedle(needle, targetAngle, currentAngleRef) {
+    const diff = targetAngle - currentAngleRef.value;
+    if (Math.abs(diff) < 0.5) return;
+    currentAngleRef.value += diff * 0.1;
+    needle.style.transform = `rotate(${currentAngleRef.value}deg)`;
+    requestAnimationFrame(()=>animateNeedle(needle,targetAngle,currentAngleRef));
+}
+
+// Sweep animation
+let sweepAngle = 0;
+function animateSweep() {
+    sweepAngle = (sweepAngle + 1) % 360;
+    bpmSweep.style.transform = `rotate(${sweepAngle}deg)`;
+    spo2Sweep.style.transform = `rotate(${sweepAngle}deg)`;
+    requestAnimationFrame(animateSweep);
+}
+animateSweep();
+
+// Chart setup
+const ctx = document.getElementById('trendChart').getContext('2d');
+const chartData = { labels: [], datasets: [
+    { label:'BPM', data:[], borderColor:'#00e676', tension:0.3, fill:false },
+    { label:'SpO₂', data:[], borderColor:'#00e676', tension:0.3, fill:false }
+]};
+const trendChart = new Chart(ctx,{type:'line',data:chartData,options:{responsive:true,scales:{y:{min:0,max:150,ticks:{color:'#fff'}},x:{ticks:{color:'#fff'}}},plugins:{legend:{labels:{color:'#fff'}}}}});
+function updateChart(bpm, spo2, timestamp){
+    if(chartData.labels.length>30){
+        chartData.labels.shift();
+        chartData.datasets[0].data.shift();
+        chartData.datasets[1].data.shift();
     }
+    chartData.labels.push(timestamp);
+    chartData.datasets[0].data.push(bpm);
+    chartData.datasets[1].data.push(spo2);
+    trendChart.update();
+}
+function formatTime(date){ return date.toLocaleTimeString(); }
 
-    function getSpO2Status(spo2) {
-        if (spo2 === 0) return { text: "No Finger", class: "low" };
-        if (spo2 < 90) return { text: "Low", class: "low" };
-        if (spo2 <= 100) return { text: "Normal", class: "normal" };
-        return { text: "High", class: "high" };
-    }
+// Firebase listeners
+db.ref('BPM').on('value', snapshot=>{
+    const bpm = snapshot.val()||0;
+    bpmValue.innerText=bpm;
+    const status=getBPMStatus(bpm);
+    bpmStatus.innerText=status.text;
+    bpmStatus.className='status '+status.class;
+    const targetAngle=valueToAngle(bpm,150);
+    animateNeedle(bpmNeedle,targetAngle,{value:currentBPMAngle});
+    currentBPMAngle=targetAngle;
+    const timestamp=formatTime(new Date());
+    bpmTime.innerText=timestamp;
+    warningText.style.display=(bpm===0)?'block':'none';
+    const currentSpO2=parseInt(spo2Value.innerText)||0;
+    updateChart(bpm,currentSpO2,timestamp);
+});
 
-    function updateGauge(gauge, value, max=150) {
-        // value from 0 to max
-        let angle = Math.min(value, max) / max * 360;
-        gauge.style.background = `conic-gradient(#00e676 0deg, #00e676 ${angle}deg, #444 ${angle}deg 360deg)`;
-    }
-
-    // Listen for BPM
-    db.ref('BPM').on('value', snapshot => {
-        const bpm = snapshot.val() || 0;
-        bpmValue.innerText = bpm;
-        const status = getBPMStatus(bpm);
-        bpmStatus.innerText = status.text;
-        bpmStatus.className = 'status ' + status.class;
-
-        updateGauge(bpmGauge, bpm, 150); // max BPM 150
-
-        // Show warning if no finger
-        warningText.style.display = (bpm === 0) ? 'block' : 'none';
-    });
-
-    // Listen for SpO2
-    db.ref('SpO2').on('value', snapshot => {
-        const spo2 = snapshot.val() || 0;
-        spo2Value.innerText = spo2 + "%";
-        const status = getSpO2Status(spo2);
-        spo2Status.innerText = status.text;
-        spo2Status.className = 'status ' + status.class;
-
-        updateGauge(spo2Gauge, spo2, 100); // max SpO2 100
-    });
+db.ref('SpO2').on('value', snapshot=>{
+    const spo2 = snapshot.val()||0;
+    spo2Value.innerText=spo2+"%";
+    const status=getSpO2Status(spo2);
+    spo2Status.innerText=status.text;
+    spo2Status.className='status '+status.class;
+    const targetAngle=valueToAngle(spo2,100);
+    animateNeedle(spo2Needle,targetAngle,{value:currentSpO2Angle});
+    currentSpO2Angle=targetAngle;
+    const timestamp=formatTime(new Date());
+    spo2Time.innerText=timestamp;
+    const currentBPM=parseInt(bpmValue.innerText)||0;
+    updateChart(currentBPM,spo2,timestamp);
+});
 </script>
 
 </body>
