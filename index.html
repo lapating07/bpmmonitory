@@ -8,6 +8,8 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500&display=swap');
+
     body {
       font-family: Arial, sans-serif;
       background-color: #121212;
@@ -31,18 +33,25 @@
       margin: 10px;
       border-radius: 12px;
       text-align: center;
-      width: 200px;
+      width: 220px;
       transition: 0.3s;
     }
 
     .value {
+      font-family: 'Orbitron', monospace;
       font-size: 3em;
       margin: 10px 0;
     }
 
-    .alert {
-      background-color: #ff4444 !important;
+    .status {
+      font-size: 1.2em;
+      margin-top: 5px;
+      font-weight: bold;
     }
+
+    .low { color: #ff4444; }
+    .normal { color: #00e676; }
+    .high { color: #ffab00; }
 </style>
 
 </head>
@@ -54,25 +63,27 @@
 <div class="card" id="bpmCard">
     <h2>BPM</h2>
     <p class="value" id="bpm">0</p>
+    <p class="status" id="bpmStatus">--</p>
 </div>
 
 <!-- SpO2 Card -->
 <div class="card" id="spo2Card">
     <h2>SpO₂</h2>
     <p class="value" id="spo2">0%</p>
+    <p class="status" id="spo2Status">--</p>
 </div>
 
 <script>
-    // Firebase configuration
+    // Firebase configuration (Updated)
     const firebaseConfig = {
-        apiKey: "AIzaSyCkGLxYWgMS_a4btMQGnltlj8zZ3NnK54s",
-        authDomain: "healthmonitory.firebaseapp.com",
-        databaseURL: "https://healthmonitory-default-rtdb.firebaseio.com",
-        projectId: "healthmonitory",
-        storageBucket: "healthmonitory.appspot.com",
-        messagingSenderId: "166953502026",
-        appId: "1:166953502026:web:19db86e28d3fc428e33248",
-        measurementId: "G-6KHXS0MRGB"
+        apiKey: "AIzaSyB8yZZHmjx4ExnkeV_V5iieSK5tSdY_Uqo",
+        authDomain: "bpmhealth-813a8.firebaseapp.com",
+        databaseURL: "https://bpmhealth-813a8-default-rtdb.firebaseio.com",
+        projectId: "bpmhealth-813a8",
+        storageBucket: "bpmhealth-813a8.firebasestorage.app",
+        messagingSenderId: "503689688190",
+        appId: "1:503689688190:web:2a5e729b1768088e46942f",
+        measurementId: "G-99498TBNW5"
     };
 
     // Initialize Firebase
@@ -82,25 +93,38 @@
     // DOM elements
     const bpmEl = document.getElementById('bpm');
     const spo2El = document.getElementById('spo2');
-    const bpmCard = document.getElementById('bpmCard');
-    const spo2Card = document.getElementById('spo2Card');
+    const bpmStatusEl = document.getElementById('bpmStatus');
+    const spo2StatusEl = document.getElementById('spo2Status');
+
+    // Helper functions for status
+    function getBPMStatus(bpm) {
+        if (bpm < 60) return { text: "Low", class: "low" };
+        if (bpm <= 100) return { text: "Normal", class: "normal" };
+        return { text: "High", class: "high" };
+    }
+
+    function getSpO2Status(spo2) {
+        if (spo2 < 90) return { text: "Low", class: "low" };
+        if (spo2 <= 100) return { text: "Normal", class: "normal" };
+        return { text: "High", class: "high" }; // Rare
+    }
 
     // Listen for BPM changes
     db.ref('BPM').on('value', snapshot => {
-        const bpm = snapshot.val();
+        const bpm = snapshot.val() || 0;
         bpmEl.innerText = bpm;
-
-        if (bpm < 60 || bpm > 100) bpmCard.classList.add('alert');
-        else bpmCard.classList.remove('alert');
+        const status = getBPMStatus(bpm);
+        bpmStatusEl.innerText = status.text;
+        bpmStatusEl.className = 'status ' + status.class;
     });
 
     // Listen for SpO2 changes
     db.ref('SpO2').on('value', snapshot => {
-        const spo2 = snapshot.val();
+        const spo2 = snapshot.val() || 0;
         spo2El.innerText = spo2 + "%";
-
-        if (spo2 < 90) spo2Card.classList.add('alert');
-        else spo2Card.classList.remove('alert');
+        const status = getSpO2Status(spo2);
+        spo2StatusEl.innerText = status.text;
+        spo2StatusEl.className = 'status ' + status.class;
     });
 </script>
 
