@@ -27,51 +27,56 @@
       margin-bottom: 30px;
     }
 
-    .card {
-      background-color: #1e1e1e;
-      padding: 20px 40px;
-      margin: 10px;
-      border-radius: 12px;
-      text-align: center;
-      width: 220px;
-      transition: 0.3s;
+    .gauge-container {
+      display: flex;
+      justify-content: center;
+      gap: 50px;
     }
 
-    .value {
+    .gauge {
+      position: relative;
+      width: 180px;
+      height: 180px;
+      border-radius: 50%;
+      background: conic-gradient(#00e676 0deg, #00e676 0deg, #444 0deg 360deg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
       font-family: 'Orbitron', monospace;
-      font-size: 3em;
-      margin: 10px 0;
+      font-size: 2em;
+      color: #fff;
+      box-shadow: 0 0 20px #000;
     }
 
-    .status {
-      font-size: 1.2em;
-      margin-top: 5px;
+    .gauge .status {
+      position: absolute;
+      bottom: 10px;
+      font-size: 1em;
       font-weight: bold;
     }
 
     .low { color: #ff4444; }
     .normal { color: #00e676; }
     .high { color: #ffab00; }
+    .warning { color: #ff4444; font-size: 1em; margin-top: 10px; }
 </style>
-
 </head>
 <body>
 
 <h1>💓 Heart Monitor Dashboard</h1>
 
-<!-- BPM Card -->
-<div class="card" id="bpmCard">
-    <h2>BPM</h2>
-    <p class="value" id="bpm">0</p>
-    <p class="status" id="bpmStatus">--</p>
+<div class="gauge-container">
+  <div class="gauge" id="bpmGauge">
+    <div id="bpmValue">0</div>
+    <div class="status" id="bpmStatus">--</div>
+  </div>
+  <div class="gauge" id="spo2Gauge">
+    <div id="spo2Value">0%</div>
+    <div class="status" id="spo2Status">--</div>
+  </div>
 </div>
 
-<!-- SpO2 Card -->
-<div class="card" id="spo2Card">
-    <h2>SpO₂</h2>
-    <p class="value" id="spo2">0%</p>
-    <p class="status" id="spo2Status">--</p>
-</div>
+<div class="warning" id="warningText">Place your finger on the sensor</div>
 
 <script>
     // Firebase configuration (Updated)
@@ -91,40 +96,58 @@
     const db = firebase.database();
 
     // DOM elements
-    const bpmEl = document.getElementById('bpm');
-    const spo2El = document.getElementById('spo2');
-    const bpmStatusEl = document.getElementById('bpmStatus');
-    const spo2StatusEl = document.getElementById('spo2Status');
+    const bpmValue = document.getElementById('bpmValue');
+    const spo2Value = document.getElementById('spo2Value');
+    const bpmStatus = document.getElementById('bpmStatus');
+    const spo2Status = document.getElementById('spo2Status');
+    const bpmGauge = document.getElementById('bpmGauge');
+    const spo2Gauge = document.getElementById('spo2Gauge');
+    const warningText = document.getElementById('warningText');
 
-    // Helper functions for status
+    // Helper functions
     function getBPMStatus(bpm) {
+        if (bpm === 0) return { text: "No Finger", class: "low" };
         if (bpm < 60) return { text: "Low", class: "low" };
         if (bpm <= 100) return { text: "Normal", class: "normal" };
         return { text: "High", class: "high" };
     }
 
     function getSpO2Status(spo2) {
+        if (spo2 === 0) return { text: "No Finger", class: "low" };
         if (spo2 < 90) return { text: "Low", class: "low" };
         if (spo2 <= 100) return { text: "Normal", class: "normal" };
-        return { text: "High", class: "high" }; // Rare
+        return { text: "High", class: "high" };
     }
 
-    // Listen for BPM changes
+    function updateGauge(gauge, value, max=150) {
+        // value from 0 to max
+        let angle = Math.min(value, max) / max * 360;
+        gauge.style.background = `conic-gradient(#00e676 0deg, #00e676 ${angle}deg, #444 ${angle}deg 360deg)`;
+    }
+
+    // Listen for BPM
     db.ref('BPM').on('value', snapshot => {
         const bpm = snapshot.val() || 0;
-        bpmEl.innerText = bpm;
+        bpmValue.innerText = bpm;
         const status = getBPMStatus(bpm);
-        bpmStatusEl.innerText = status.text;
-        bpmStatusEl.className = 'status ' + status.class;
+        bpmStatus.innerText = status.text;
+        bpmStatus.className = 'status ' + status.class;
+
+        updateGauge(bpmGauge, bpm, 150); // max BPM 150
+
+        // Show warning if no finger
+        warningText.style.display = (bpm === 0) ? 'block' : 'none';
     });
 
-    // Listen for SpO2 changes
+    // Listen for SpO2
     db.ref('SpO2').on('value', snapshot => {
         const spo2 = snapshot.val() || 0;
-        spo2El.innerText = spo2 + "%";
+        spo2Value.innerText = spo2 + "%";
         const status = getSpO2Status(spo2);
-        spo2StatusEl.innerText = status.text;
-        spo2StatusEl.className = 'status ' + status.class;
+        spo2Status.innerText = status.text;
+        spo2Status.className = 'status ' + status.class;
+
+        updateGauge(spo2Gauge, spo2, 100); // max SpO2 100
     });
 </script>
 
