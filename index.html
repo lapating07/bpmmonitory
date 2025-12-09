@@ -1,283 +1,89 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Heart Monitor Dashboard</title>
+#include <WiFi.h>
+#include <Wire.h>
+#include "MAX30105.h"
+#include "spo2_algorithm.h"
+#include <Firebase_ESP_Client.h>
+#include <addons/TokenHelper.h>
 
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+#define WIFI_SSID     "Home_WiFi.2ZJR"
+#define WIFI_PASSWORD "admin12345"
 
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+#define API_KEY      "AIzaSyB8yZZHmjx4ExnkeV_V5iieSK5tSdY_Uqo"
+#define DATABASE_URL "https://bpmhealth-813a8-default-rtdb.firebaseio.com/"
 
-  <style>
-    body {
-      background: #121212;
-      color: #fff;
-      margin: 0;
-      padding: 20px;
-      display: flex;
-      font-family: Arial, sans-serif;
-    }
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
 
-    .chart-panel {
-      width: 520px;
-      background: #1e1e1e;
-      border: 2px solid #444;
-      border-radius: 12px;
-      padding: 20px;
-      margin-right: 20px;
-    }
+MAX30105 sensor;
 
-    .main {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
+uint32_t irBuffer[100], redBuffer[100];
 
-    h1 {
-      color: #ff4081;
-      font-size: 2.2em;
-      margin-bottom: 15px;
-    }
+int32_t spo2, heartRate;
+int8_t validSPO2, validHeartRate;
 
-    .status-top {
-      font-size: 1.3em;
-      margin-bottom: 20px;
-      color: #00e5ff;
-    }
-
-    .gauges {
-      display: flex;
-      gap: 80px;
-    }
-
-    .gauge-box {
-      position: relative;
-      width: 360px;
-      height: 360px;
-    }
-
-    canvas {
-      display: block;
-    }
-
-    .gauge-value {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      font-size: 3.5em;
-      font-family: 'Orbitron', monospace;
-      pointer-events: none;
-    }
-
-    .gauge-label {
-      position: absolute;
-      top: 15px;
-      width: 100%;
-      text-align: center;
-      font-size: 1.2em;
-      color: #aaa;
-    }
-
-    .gauge-status {
-      position: absolute;
-      bottom: 20px;
-      width: 100%;
-      text-align: center;
-      font-size: 1.2em;
-      pointer-events: none;
-    }
-
-    .low { color: #ff4444; }
-    .normal { color: #00e676; }
-    .high { color: #ffab00; }
-  </style>
-</head>
-
-<body>
-
-<!-- Left Graph Panel -->
-<div class="chart-panel">
-  <h2 style="text-align:center;color:#ff4081;">Measurements History</h2>
-  <canvas id="trendChart"></canvas>
-</div>
-
-<!-- Main Panel -->
-<div class="main">
-  <h1>Heart Monitor Dashboard</h1>
-  <div class="status-top" id="fingerStatus">Waiting for data...</div>
-
-  <div class="gauges">
-
-    <!-- BPM Gauge -->
-    <div class="gauge-box">
-      <div class="gauge-label">BPM</div>
-      <canvas id="bpmGauge" width="360" height="360"></canvas>
-      <div class="gauge-value" id="bpmValue">0</div>
-      <div class="gauge-status" id="bpmStatus">--</div>
-    </div>
-
-    <!-- SpO₂ Gauge -->
-    <div class="gauge-box">
-      <div class="gauge-label">SpO₂</div>
-      <canvas id="spo2Gauge" width="360" height="360"></canvas>
-      <div class="gauge-value" id="spo2Value">0%</div>
-      <div class="gauge-status" id="spo2Status">--</div>
-    </div>
-
-  </div>
-</div>
-
-<script>
-/* ===== Firebase Config ===== */
-const firebaseConfig = {
-  apiKey: "AIzaSyB8yZZHmjx4ExnkeV_V5iieSK5tSdY_Uqo",
-  authDomain: "bpmhealth-813a8.firebaseapp.com",
-  databaseURL: "https://bpmhealth-813a8-default-rtdb.firebaseio.com",
-  projectId: "bpmhealth-813a8",
-  storageBucket: "bpmhealth-813a8.appspot.com",
-  messagingSenderId: "503689688190",
-  appId: "1:503689688190:web:2a5e729b1768088e46942f"
-};
-
-/* ✅ Initialize Firebase */
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
-
-/* ===== DOM ===== */
-const bpmValEl = document.getElementById('bpmValue');
-const spo2ValEl = document.getElementById('spo2Value');
-const bpmStatEl = document.getElementById('bpmStatus');
-const spo2StatEl = document.getElementById('spo2Status');
-const fingerStatusEl = document.getElementById('fingerStatus');
-
-const bpmCtx = document.getElementById('bpmGauge').getContext('2d');
-const spo2Ctx = document.getElementById('spo2Gauge').getContext('2d');
-
-/* ===== Gauge Function ===== */
-function drawClockGauge(ctx, value, max, color) {
-  const cx = 180, cy = 180, radius = 135;
-  const start = Math.PI * 0.75;
-  const end = Math.PI * 2.25;
-  const angle = start + (value / max) * (Math.PI * 1.5);
-
-  ctx.clearRect(0, 0, 360, 360);
-
-  ctx.beginPath();
-  ctx.arc(cx, cy, radius, start, end);
-  ctx.lineWidth = 18;
-  ctx.strokeStyle = '#333';
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.arc(cx, cy, radius, start, angle);
-  ctx.lineWidth = 18;
-  ctx.strokeStyle = color;
-  ctx.stroke();
-
-  const nx = cx + Math.cos(angle) * (radius - 10);
-  const ny = cy + Math.sin(angle) * (radius - 10);
-
-  ctx.beginPath();
-  ctx.moveTo(cx, cy);
-  ctx.lineTo(nx, ny);
-  ctx.lineWidth = 4;
-  ctx.strokeStyle = '#fff';
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.arc(cx, cy, 6, 0, Math.PI * 2);
-  ctx.fillStyle = '#fff';
-  ctx.fill();
-}
-
-/* ===== Status Logic ===== */
-function getStatusBPM(bpm) {
-  if (bpm < 60) return { text: 'Low', color: '#ff4444', cls: 'low' };
-  if (bpm <= 100) return { text: 'Normal', color: '#00e676', cls: 'normal' };
-  return { text: 'High', color: '#ffab00', cls: 'high' };
-}
-
-function getStatusSpO2(spo2) {
-  if (spo2 < 90) return { text: 'Low', color: '#ff4444', cls: 'low' };
-  return { text: 'Normal', color: '#00e676', cls: 'normal' };
-}
-
-/* ===== Chart Setup ===== */
-const chartCtx = document.getElementById('trendChart').getContext('2d');
-const chartData = {
-  labels: [],
-  datasets: [
-    { label: 'BPM', data: [], tension: 0.3 },
-    { label: 'SpO₂', data: [], tension: 0.3 }
-  ]
-};
-
-const trendChart = new Chart(chartCtx, {
-  type: 'line',
-  data: chartData,
-  options: {
-    responsive: true,
-    plugins: { legend: { labels: { color: '#fff' } } },
-    scales: {
-      x: { ticks: { color: '#fff' } },
-      y: { min: 0, max: 150, ticks: { color: '#fff' } }
-    }
+void connectWiFi() {
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500); Serial.print(".");
   }
-});
+  Serial.println("\n✅ WiFi Connected");
+}
 
-/* ===== Add to Chart ===== */
-function addToChart(bpm, spo2) {
-  const now = new Date();
-  const label = now.toLocaleTimeString();
+void setup() {
+  Serial.begin(115200);
+  connectWiFi();
 
-  if (chartData.labels.length > 40) {
-    chartData.labels.shift();
-    chartData.datasets[0].data.shift();
-    chartData.datasets[1].data.shift();
+  auth.user.email = "";
+  auth.user.password = "";
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+
+  Wire.begin(21, 22);
+  sensor.begin(Wire);
+  sensor.setup();
+  sensor.setPulseAmplitudeRed(0x7F);
+  sensor.setPulseAmplitudeIR(0x7F);
+
+  Serial.println("✅ System Ready");
+}
+
+void loop() {
+  long ir = sensor.getIR();
+  if (ir < 30000) {
+    delay(400);
+    return;
   }
 
-  chartData.labels.push(label);
-  chartData.datasets[0].data.push(bpm);
-  chartData.datasets[1].data.push(spo2);
-  trendChart.update();
+  for (int i=0; i<100; i++) {
+    while(!sensor.available()) sensor.check();
+    redBuffer[i]=sensor.getRed();
+    irBuffer[i]=sensor.getIR();
+    sensor.nextSample();
+  }
+
+  maxim_heart_rate_and_oxygen_saturation(irBuffer, 100, redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
+
+  if (validSPO2 && validHeartRate) {
+
+    unsigned long stamp = millis();
+    String livePath = "/LiveData/" + String(stamp);
+    String historyPath = "/History/" + String(stamp);
+
+    FirebaseJson json;
+    json.set("bpm", heartRate);
+    json.set("spo2", spo2);
+    json.set("timestamp", stamp);
+
+    Firebase.RTDB.setJSON(&fbdo, livePath, &json);
+    Firebase.RTDB.setJSON(&fbdo, historyPath, &json);
+
+    Serial.print("✅ BPM: ");Serial.print(heartRate);
+    Serial.print(" | SpO2: ");Serial.println(spo2);
+  }
+
+  delay(1000);
 }
-
-/* ✅ Live Firebase Listeners */
-db.ref("BPM").on("value", snapshot => {
-  const bpm = snapshot.val() || 0;
-  const s = getStatusBPM(bpm);
-
-  bpmValEl.innerText = bpm;
-  bpmStatEl.innerText = s.text;
-  bpmStatEl.className = 'gauge-status ' + s.cls;
-
-  drawClockGauge(bpmCtx, bpm, 150, s.color);
-  fingerStatusEl.innerText = bpm === 0 ? "Waiting for sensor..." : "Live data";
-
-  const spo2 = parseInt(spo2ValEl.innerText) || 0;
-  addToChart(bpm, spo2);
-});
-
-db.ref("SpO2").on("value", snapshot => {
-  const spo2 = snapshot.val() || 0;
-  const s = getStatusSpO2(spo2);
-
-  spo2ValEl.innerText = spo2 + "%";
-  spo2StatEl.innerText = s.text;
-  spo2StatEl.className = 'gauge-status ' + s.cls;
-
-  drawClockGauge(spo2Ctx, spo2, 100, s.color);
-
-  const bpm = parseInt(bpmValEl.innerText) || 0;
-  addToChart(bpm, spo2);
-});
-
-console.log("✅ Firebase Dashboard Connected");
-</script>
-
-</body>
-</html>
