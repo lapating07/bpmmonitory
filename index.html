@@ -2,19 +2,57 @@
 <html>
 <head>
   <title>Live Health Dashboard</title>
+
+  <!-- Firebase v8 -->
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
   <style>
-    body {background:#000;color:#0f0;font-family:Arial;text-align:center}
-    canvas {background:#111;margin:10px;border-radius:10px}
-    table{margin:auto;border-collapse:collapse}
-    td,th{border:1px solid #0f0;padding:5px}
+    body {
+      background:#f5f5f5;
+      color:#333;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+
+    h2 { color: #d32f2f; }
+    h1 { margin: 10px 0; }
+
+    canvas {
+      background:#ffffff;
+      margin:10px auto;
+      border-radius:10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      display: block;
+    }
+
+    table {
+      margin:auto;
+      border-collapse:collapse;
+      background:#fff;
+      box-shadow: 0 0 5px rgba(0,0,0,0.1);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    td, th {
+      border:1px solid #ccc;
+      padding:8px 12px;
+      color:#333;
+    }
+
+    th {
+      background:#e0e0e0;
+    }
   </style>
 </head>
 <body>
 
-<h2>🔴 LIVE HEART RATE MONITOR</h2>
+<h2>❤️ LIVE HEART RATE MONITOR</h2>
 
 <h1>BPM: <span id="bpm">--</span></h1>
 <h1>SpO₂: <span id="spo2">--</span></h1>
@@ -22,13 +60,14 @@
 <canvas id="chart" width="600" height="300"></canvas>
 
 <table id="history">
-  <tr><th>Time</th><th>BPM</th><th>SpO2</th></tr>
+  <tr><th>Time</th><th>BPM</th><th>SpO₂</th></tr>
 </table>
 
 <script>
+/* ===== Firebase Config ===== */
 const firebaseConfig = {
   apiKey: "AIzaSyB8yZZHmjx4ExnkeV_V5iieSK5tSdY_Uqo",
-  databaseURL: "https://bpmhealth-813a8-default-rtdb.firebaseio.com/"
+  databaseURL: "https://bpmhealth-813a8-default-rtdb.firebaseio.com"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -40,37 +79,87 @@ const table = document.getElementById("history");
 
 const ctx = document.getElementById("chart").getContext("2d");
 
-const graph = new Chart(ctx,{
-  type:"line",
-  data:{labels:[],datasets:[
-    {label:"BPM",data:[]},
-    {label:"SpO2",data:[]}
-  ]}
+/* ===== Chart.js config ===== */
+const graph = new Chart(ctx, {
+  type: "line",
+  data: {
+    labels: [],
+    datasets: [
+      {
+        label: "BPM",
+        data: [],
+        borderColor: "#d32f2f",
+        backgroundColor: "rgba(211, 47, 47, 0.2)",
+        borderWidth: 2,
+        fill: true
+      },
+      {
+        label: "SpO₂",
+        data: [],
+        borderColor: "#1976d2",
+        backgroundColor: "rgba(25, 118, 210, 0.2)",
+        borderWidth: 2,
+        fill: true
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    animation: false,
+    scales: {
+      x: {
+        ticks: { color: "#333" }
+      },
+      y: {
+        min: 0,
+        max: 150,
+        ticks: { color: "#333" }
+      }
+    },
+    plugins: {
+      legend: {
+        labels: { color: "#333" }
+      }
+    }
+  }
 });
 
-// LIVE
-db.ref("Live").on("value", snap=>{
-  const d=snap.val();
-  if(!d) return;
+/* ===== LIVE DATA ===== */
+db.ref("Live").on("value", snap => {
+  const d = snap.val();
+  if (!d) return;
 
-  bpm.innerText=d.BPM;
-  spo2.innerText=d.SpO2+"%";
+  const bpmVal = d.BPM ?? 0;
+  const spo2Val = d.SpO2 ?? 0;
 
-  const t=new Date().toLocaleTimeString();
+  bpm.innerText = bpmVal;
+  spo2.innerText = spo2Val + "%";
+
+  const t = new Date().toLocaleTimeString();
+
+  if (graph.data.labels.length > 30) {
+    graph.data.labels.shift();
+    graph.data.datasets[0].data.shift();
+    graph.data.datasets[1].data.shift();
+  }
+
   graph.data.labels.push(t);
-  graph.data.datasets[0].data.push(d.BPM);
-  graph.data.datasets[1].data.push(d.SpO2);
+  graph.data.datasets[0].data.push(bpmVal);
+  graph.data.datasets[1].data.push(spo2Val);
   graph.update();
 });
 
-// HISTORY
-db.ref("History").limitToLast(20).on("child_added", snap=>{
-  const d=snap.val();
+/* ===== HISTORY DATA ===== */
+db.ref("History").limitToLast(20).on("child_added", snap => {
+  const d = snap.val();
+  if (!d) return;
+
   const row = table.insertRow(1);
   row.insertCell(0).innerText = new Date(d.time).toLocaleString();
   row.insertCell(1).innerText = d.bpm;
   row.insertCell(2).innerText = d.spo2;
 });
 </script>
+
 </body>
 </html>
