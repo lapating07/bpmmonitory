@@ -17,6 +17,7 @@
 
     h2 {
       color: #ff4081;
+      margin-bottom: 10px;
     }
 
     #chartContainer {
@@ -56,6 +57,7 @@
     #historyTable th, #historyTable td {
       border: 1px solid #ccc;
       padding: 8px;
+      text-align: center;
     }
 
     #historyTable th {
@@ -76,7 +78,7 @@
 <p>BPM: <span id="bpmVal">--</span> | SpO₂: <span id="spo2Val">--</span></p>
 
 <div id="chartContainer">
-  <canvas id="liveChart" height="200"></canvas>
+  <canvas id="liveChart" height="150"></canvas>
 </div>
 
 <button id="historyBtn">Show History Table</button>
@@ -143,6 +145,7 @@
     chartData.datasets[0].data.push(bpm);
     chartData.datasets[1].data.push(spo2);
 
+    // keep only latest 30 points
     if (chartData.labels.length > 30) {
       chartData.labels.shift();
       chartData.datasets[0].data.shift();
@@ -154,20 +157,24 @@
 
   // ===== Show History Table =====
   historyBtn.addEventListener("click", () => {
-    historyTable.style.display = historyTable.style.display === "none" ? "table" : "none";
-    if (historyTable.style.display === "table") {
-      // Clear previous rows except header
+    if (historyTable.style.display === "none") {
+      historyTable.style.display = "table";
+      // Clear old rows except header
       while (historyTable.rows.length > 1) historyTable.deleteRow(1);
 
+      // Fetch stable measurements from History
       db.ref("History").orderByKey().limitToLast(50).once("value", snap => {
         snap.forEach(childSnap => {
           const d = childSnap.val();
           const row = historyTable.insertRow();
-          row.insertCell(0).innerText = new Date(d.time).toLocaleString();
+          const timeStr = new Date(d.time).toLocaleString();
+          row.insertCell(0).innerText = timeStr;
           row.insertCell(1).innerText = d.bpm;
           row.insertCell(2).innerText = d.spo2;
         });
       });
+    } else {
+      historyTable.style.display = "none";
     }
   });
 </script>
