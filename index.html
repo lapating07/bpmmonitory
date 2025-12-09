@@ -108,8 +108,7 @@
 <!-- Main Panel -->
 <div class="main">
   <h1>Heart Monitor Dashboard</h1>
-
-  <div class="status-top" id="fingerStatus">Waiting for measurement...</div>
+  <div class="status-top" id="fingerStatus">Waiting for data...</div>
 
   <div class="gauges">
 
@@ -121,7 +120,7 @@
       <div class="gauge-status" id="bpmStatus">--</div>
     </div>
 
-    <!-- SpO2 Gauge -->
+    <!-- SpO₂ Gauge -->
     <div class="gauge-box">
       <div class="gauge-label">SpO₂</div>
       <canvas id="spo2Gauge" width="360" height="360"></canvas>
@@ -139,12 +138,12 @@ const firebaseConfig = {
   authDomain: "bpmhealth-813a8.firebaseapp.com",
   databaseURL: "https://bpmhealth-813a8-default-rtdb.firebaseio.com",
   projectId: "bpmhealth-813a8",
-  storageBucket: "bpmhealth-813a8.firebasestorage.app",
+  storageBucket: "bpmhealth-813a8.appspot.com",
   messagingSenderId: "503689688190",
-  appId: "1:503689688190:web:2a5e729b1768088e46942f",
-  measurementId: "G-99498TBNW5"
+  appId: "1:503689688190:web:2a5e729b1768088e46942f"
 };
 
+/* ✅ Initialize Firebase */
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
@@ -158,7 +157,7 @@ const fingerStatusEl = document.getElementById('fingerStatus');
 const bpmCtx = document.getElementById('bpmGauge').getContext('2d');
 const spo2Ctx = document.getElementById('spo2Gauge').getContext('2d');
 
-/* ===== Gauge Drawing ===== */
+/* ===== Gauge Function ===== */
 function drawClockGauge(ctx, value, max, color) {
   const cx = 180, cy = 180, radius = 135;
   const start = Math.PI * 0.75;
@@ -167,23 +166,21 @@ function drawClockGauge(ctx, value, max, color) {
 
   ctx.clearRect(0, 0, 360, 360);
 
-  // Background Arc
   ctx.beginPath();
   ctx.arc(cx, cy, radius, start, end);
   ctx.lineWidth = 18;
   ctx.strokeStyle = '#333';
   ctx.stroke();
 
-  // Progress Arc
   ctx.beginPath();
   ctx.arc(cx, cy, radius, start, angle);
   ctx.lineWidth = 18;
   ctx.strokeStyle = color;
   ctx.stroke();
 
-  // Needle
   const nx = cx + Math.cos(angle) * (radius - 10);
   const ny = cy + Math.sin(angle) * (radius - 10);
+
   ctx.beginPath();
   ctx.moveTo(cx, cy);
   ctx.lineTo(nx, ny);
@@ -191,14 +188,13 @@ function drawClockGauge(ctx, value, max, color) {
   ctx.strokeStyle = '#fff';
   ctx.stroke();
 
-  // Center dot
   ctx.beginPath();
   ctx.arc(cx, cy, 6, 0, Math.PI * 2);
   ctx.fillStyle = '#fff';
   ctx.fill();
 }
 
-/* ===== Status Functions ===== */
+/* ===== Status Logic ===== */
 function getStatusBPM(bpm) {
   if (bpm < 60) return { text: 'Low', color: '#ff4444', cls: 'low' };
   if (bpm <= 100) return { text: 'Normal', color: '#00e676', cls: 'normal' };
@@ -210,9 +206,8 @@ function getStatusSpO2(spo2) {
   return { text: 'Normal', color: '#00e676', cls: 'normal' };
 }
 
-/* ===== Chart.js ===== */
+/* ===== Chart Setup ===== */
 const chartCtx = document.getElementById('trendChart').getContext('2d');
-
 const chartData = {
   labels: [],
   datasets: [
@@ -226,9 +221,7 @@ const trendChart = new Chart(chartCtx, {
   data: chartData,
   options: {
     responsive: true,
-    plugins: {
-      legend: { labels: { color: '#fff' } }
-    },
+    plugins: { legend: { labels: { color: '#fff' } } },
     scales: {
       x: { ticks: { color: '#fff' } },
       y: { min: 0, max: 150, ticks: { color: '#fff' } }
@@ -236,12 +229,12 @@ const trendChart = new Chart(chartCtx, {
   }
 });
 
-/* ===== Update Chart ===== */
+/* ===== Add to Chart ===== */
 function addToChart(bpm, spo2) {
   const now = new Date();
-  const label = now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
+  const label = now.toLocaleTimeString();
 
-  if (chartData.labels.length > 30) {
+  if (chartData.labels.length > 40) {
     chartData.labels.shift();
     chartData.datasets[0].data.shift();
     chartData.datasets[1].data.shift();
@@ -253,22 +246,17 @@ function addToChart(bpm, spo2) {
   trendChart.update();
 }
 
-/* ===== Firebase Listeners ===== */
+/* ✅ Live Firebase Listeners */
 db.ref("BPM").on("value", snapshot => {
   const bpm = snapshot.val() || 0;
-
-  bpmValEl.innerText = bpm;
   const s = getStatusBPM(bpm);
 
+  bpmValEl.innerText = bpm;
   bpmStatEl.innerText = s.text;
   bpmStatEl.className = 'gauge-status ' + s.cls;
-  drawClockGauge(bpmCtx, bpm, 150, s.color);
 
-  if (bpm === 0) {
-    fingerStatusEl.innerText = "Waiting for data from sensor...";
-  } else {
-    fingerStatusEl.innerText = "Measuring...";
-  }
+  drawClockGauge(bpmCtx, bpm, 150, s.color);
+  fingerStatusEl.innerText = bpm === 0 ? "Waiting for sensor..." : "Live data";
 
   const spo2 = parseInt(spo2ValEl.innerText) || 0;
   addToChart(bpm, spo2);
@@ -276,17 +264,19 @@ db.ref("BPM").on("value", snapshot => {
 
 db.ref("SpO2").on("value", snapshot => {
   const spo2 = snapshot.val() || 0;
-
-  spo2ValEl.innerText = spo2 + '%';
   const s = getStatusSpO2(spo2);
 
+  spo2ValEl.innerText = spo2 + "%";
   spo2StatEl.innerText = s.text;
   spo2StatEl.className = 'gauge-status ' + s.cls;
+
   drawClockGauge(spo2Ctx, spo2, 100, s.color);
 
   const bpm = parseInt(bpmValEl.innerText) || 0;
   addToChart(bpm, spo2);
 });
+
+console.log("✅ Firebase Dashboard Connected");
 </script>
 
 </body>
