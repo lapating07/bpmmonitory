@@ -2,11 +2,14 @@
 <html>
 <head>
   <title>Heart Monitor Dashboard</title>
+
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
   <style>
     body {
       background: #121212;
@@ -14,97 +17,123 @@
       margin: 0;
       padding: 20px;
       display: flex;
-      flex-direction: row;
       font-family: Arial, sans-serif;
     }
+
     .chart-panel {
-      width: 480px;
+      width: 520px;
       background: #1e1e1e;
       border: 2px solid #444;
-      border-radius: 10px;
+      border-radius: 12px;
       padding: 20px;
       margin-right: 20px;
     }
+
     .main {
       flex: 1;
       display: flex;
       flex-direction: column;
       align-items: center;
     }
+
     h1 {
       color: #ff4081;
+      font-size: 2.2em;
       margin-bottom: 15px;
-      font-size: 2em;
     }
-    .warning {
-      color: #ff4444;
+
+    .status-top {
       font-size: 1.3em;
-      margin-bottom: 25px;
-      text-align: center;
-      animation: blink 1s infinite;
+      margin-bottom: 20px;
+      color: #00e5ff;
     }
-    @keyframes blink { 0%,50%,100% { opacity: 1; } 25%,75% { opacity: 0; } }
 
     .gauges {
       display: flex;
-      gap: 60px;
+      gap: 80px;
     }
+
     .gauge-box {
       position: relative;
-      width: 320px;
-      height: 320px;
+      width: 360px;
+      height: 360px;
     }
+
     canvas {
       display: block;
     }
+
     .gauge-value {
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      font-size: 3em;
+      font-size: 3.5em;
       font-family: 'Orbitron', monospace;
       pointer-events: none;
     }
-    .gauge-status {
+
+    .gauge-label {
       position: absolute;
-      bottom: 25px;
+      top: 15px;
       width: 100%;
       text-align: center;
-      font-size: 1.1em;
+      font-size: 1.2em;
+      color: #aaa;
+    }
+
+    .gauge-status {
+      position: absolute;
+      bottom: 20px;
+      width: 100%;
+      text-align: center;
+      font-size: 1.2em;
       pointer-events: none;
     }
+
     .low { color: #ff4444; }
     .normal { color: #00e676; }
     .high { color: #ffab00; }
   </style>
 </head>
+
 <body>
 
-  <div class="chart-panel">
-    <h2 style="text-align:center; color:#ff4081;">Trend Graph</h2>
-    <canvas id="trendChart"></canvas>
-  </div>
+<!-- Left Graph Panel -->
+<div class="chart-panel">
+  <h2 style="text-align:center;color:#ff4081;">Measurements History</h2>
+  <canvas id="trendChart"></canvas>
+</div>
 
-  <div class="main">
-    <h1>💓 Heart Monitor Dashboard</h1>
-    <div class="warning" id="warningText">Place your finger on the sensor</div>
-    <div class="gauges">
-      <div class="gauge-box">
-        <canvas id="bpmGauge" width="320" height="320"></canvas>
-        <div class="gauge-value" id="bpmValue">0</div>
-        <div class="gauge-status" id="bpmStatus">--</div>
-      </div>
-      <div class="gauge-box">
-        <canvas id="spo2Gauge" width="320" height="320"></canvas>
-        <div class="gauge-value" id="spo2Value">0%</div>
-        <div class="gauge-status" id="spo2Status">--</div>
-      </div>
+<!-- Main Panel -->
+<div class="main">
+  <h1>Heart Monitor Dashboard</h1>
+
+  <div class="status-top" id="fingerStatus">Waiting for measurement...</div>
+
+  <div class="gauges">
+
+    <!-- BPM Gauge -->
+    <div class="gauge-box">
+      <div class="gauge-label">BPM</div>
+      <canvas id="bpmGauge" width="360" height="360"></canvas>
+      <div class="gauge-value" id="bpmValue">0</div>
+      <div class="gauge-status" id="bpmStatus">--</div>
     </div>
+
+    <!-- SpO2 Gauge -->
+    <div class="gauge-box">
+      <div class="gauge-label">SpO₂</div>
+      <canvas id="spo2Gauge" width="360" height="360"></canvas>
+      <div class="gauge-value" id="spo2Value">0%</div>
+      <div class="gauge-status" id="spo2Status">--</div>
+    </div>
+
   </div>
+</div>
 
 <script>
-// Firebase config
+/* ===== Firebase Config ===== */
 const firebaseConfig = {
   apiKey: "AIzaSyB8yZZHmjx4ExnkeV_V5iieSK5tSdY_Uqo",
   authDomain: "bpmhealth-813a8.firebaseapp.com",
@@ -115,132 +144,150 @@ const firebaseConfig = {
   appId: "1:503689688190:web:2a5e729b1768088e46942f",
   measurementId: "G-99498TBNW5"
 };
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-// DOM elements
-const bpmValEl  = document.getElementById('bpmValue');
+/* ===== DOM ===== */
+const bpmValEl = document.getElementById('bpmValue');
 const spo2ValEl = document.getElementById('spo2Value');
 const bpmStatEl = document.getElementById('bpmStatus');
-const spo2StatEl= document.getElementById('spo2Status');
-const warningEl = document.getElementById('warningText');
-const bpmCtx   = document.getElementById('bpmGauge').getContext('2d');
-const spo2Ctx  = document.getElementById('spo2Gauge').getContext('2d');
+const spo2StatEl = document.getElementById('spo2Status');
+const fingerStatusEl = document.getElementById('fingerStatus');
 
-// Helper
-function getStatusBPM(bpm) {
-  if (bpm < 60) return { text: 'Low',    color: '#ff4444', cls: 'low' };
-  if (bpm <= 100) return { text: 'Normal', color: '#00e676', cls: 'normal' };
-  return { text: 'High',   color: '#ffab00', cls: 'high' };
-}
-function getStatusSpO2(spo2) {
-  if (spo2 < 90) return { text: 'Low',    color: '#ff4444', cls: 'low' };
-  if (spo2 <= 100) return { text: 'Normal', color: '#00e676', cls: 'normal' };
-  return { text: 'High',   color: '#ffab00', cls: 'high' };
-}
+const bpmCtx = document.getElementById('bpmGauge').getContext('2d');
+const spo2Ctx = document.getElementById('spo2Gauge').getContext('2d');
 
-function drawGauge(ctx, value, max, color) {
-  const cx = 160, cy = 160, radius = 120;
-  const start = -Math.PI * 0.75;
-  const end   = Math.PI * 0.75;
-  const angle = start + (value / max)*(Math.PI*1.5);
+/* ===== Gauge Drawing ===== */
+function drawClockGauge(ctx, value, max, color) {
+  const cx = 180, cy = 180, radius = 135;
+  const start = Math.PI * 0.75;
+  const end = Math.PI * 2.25;
+  const angle = start + (value / max) * (Math.PI * 1.5);
 
-  ctx.clearRect(0,0,320,320);
+  ctx.clearRect(0, 0, 360, 360);
 
-  // back arc
+  // Background Arc
   ctx.beginPath();
-  ctx.arc(cx,cy,radius, start, end);
-  ctx.lineWidth = 16;
-  ctx.strokeStyle = '#444';
+  ctx.arc(cx, cy, radius, start, end);
+  ctx.lineWidth = 18;
+  ctx.strokeStyle = '#333';
   ctx.stroke();
 
-  // value arc
+  // Progress Arc
   ctx.beginPath();
-  ctx.arc(cx,cy,radius, start, angle);
-  ctx.lineWidth = 16;
+  ctx.arc(cx, cy, radius, start, angle);
+  ctx.lineWidth = 18;
   ctx.strokeStyle = color;
   ctx.stroke();
 
-  // ticks and labels
-  ctx.font = '14px Arial';
-  ctx.fillStyle = '#aaa';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  for (let i=0; i<=10; i++) {
-    const t = start + (i/10)*(Math.PI*1.5);
-    const xOuter = cx + Math.cos(t)*(radius + 10);
-    const yOuter = cy + Math.sin(t)*(radius + 10);
-    const xInner = cx + Math.cos(t)*(radius - 8);
-    const yInner = cy + Math.sin(t)*(radius - 8);
-    ctx.beginPath();
-    ctx.moveTo(xInner,yInner);
-    ctx.lineTo(xOuter,yOuter);
-    ctx.strokeStyle = '#666';
-    ctx.lineWidth = 2;
-    ctx.stroke();
+  // Needle
+  const nx = cx + Math.cos(angle) * (radius - 10);
+  const ny = cy + Math.sin(angle) * (radius - 10);
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(nx, ny);
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#fff';
+  ctx.stroke();
 
-    const val = Math.round((i/10)*max);
-    const lx = cx + Math.cos(t)*(radius + 25);
-    const ly = cy + Math.sin(t)*(radius + 25);
-    ctx.fillText(val, lx, ly);
-  }
+  // Center dot
+  ctx.beginPath();
+  ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
 }
 
-// Chart.js for history graph
-const ctxChart = document.getElementById('trendChart').getContext('2d');
-const chartData = { labels: [], datasets: [
-  { label: 'BPM',   data: [], borderColor: '#00e676', tension:0.3 },
-  { label: 'SpO2',  data: [], borderColor: '#00b0ff', tension:0.3 }
-]};
-const trendChart = new Chart(ctxChart, {
+/* ===== Status Functions ===== */
+function getStatusBPM(bpm) {
+  if (bpm < 60) return { text: 'Low', color: '#ff4444', cls: 'low' };
+  if (bpm <= 100) return { text: 'Normal', color: '#00e676', cls: 'normal' };
+  return { text: 'High', color: '#ffab00', cls: 'high' };
+}
+
+function getStatusSpO2(spo2) {
+  if (spo2 < 90) return { text: 'Low', color: '#ff4444', cls: 'low' };
+  return { text: 'Normal', color: '#00e676', cls: 'normal' };
+}
+
+/* ===== Chart.js ===== */
+const chartCtx = document.getElementById('trendChart').getContext('2d');
+
+const chartData = {
+  labels: [],
+  datasets: [
+    { label: 'BPM', data: [], tension: 0.3 },
+    { label: 'SpO₂', data: [], tension: 0.3 }
+  ]
+};
+
+const trendChart = new Chart(chartCtx, {
   type: 'line',
   data: chartData,
   options: {
     responsive: true,
-    scales: {
-      y: { min: 0, max: 150, ticks: { color: '#fff' } },
-      x: { ticks: { color: '#fff' } }
+    plugins: {
+      legend: { labels: { color: '#fff' } }
     },
-    plugins: { legend: { labels: { color: '#fff' } } }
+    scales: {
+      x: { ticks: { color: '#fff' } },
+      y: { min: 0, max: 150, ticks: { color: '#fff' } }
+    }
   }
 });
-function updateChart(bpm, spo2, time) {
+
+/* ===== Update Chart ===== */
+function addToChart(bpm, spo2) {
+  const now = new Date();
+  const label = now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
+
   if (chartData.labels.length > 30) {
     chartData.labels.shift();
     chartData.datasets[0].data.shift();
     chartData.datasets[1].data.shift();
   }
-  chartData.labels.push(time);
+
+  chartData.labels.push(label);
   chartData.datasets[0].data.push(bpm);
   chartData.datasets[1].data.push(spo2);
   trendChart.update();
 }
 
-// Subscribe to Firebase
-db.ref('BPM').on('value', snap => {
-  const bpm = snap.val() || 0;
+/* ===== Firebase Listeners ===== */
+db.ref("BPM").on("value", snapshot => {
+  const bpm = snapshot.val() || 0;
+
   bpmValEl.innerText = bpm;
-  const st = getStatusBPM(bpm);
-  bpmStatEl.innerText = st.text;
-  bpmStatEl.className = 'gauge-status ' + st.cls;
-  drawGauge(bpmCtx, bpm, 150, st.color);
-  warningEl.style.display = (bpm === 0 ? 'block' : 'none');
+  const s = getStatusBPM(bpm);
+
+  bpmStatEl.innerText = s.text;
+  bpmStatEl.className = 'gauge-status ' + s.cls;
+  drawClockGauge(bpmCtx, bpm, 150, s.color);
+
+  if (bpm === 0) {
+    fingerStatusEl.innerText = "Waiting for data from sensor...";
+  } else {
+    fingerStatusEl.innerText = "Measuring...";
+  }
 
   const spo2 = parseInt(spo2ValEl.innerText) || 0;
-  updateChart(bpm, spo2, new Date().toLocaleTimeString());
+  addToChart(bpm, spo2);
 });
 
-db.ref('SpO2').on('value', snap => {
-  const spo2 = snap.val() || 0;
+db.ref("SpO2").on("value", snapshot => {
+  const spo2 = snapshot.val() || 0;
+
   spo2ValEl.innerText = spo2 + '%';
-  const st = getStatusSpO2(spo2);
-  spo2StatEl.innerText = st.text;
-  spo2StatEl.className = 'gauge-status ' + st.cls;
-  drawGauge(spo2Ctx, spo2, 100, st.color);
+  const s = getStatusSpO2(spo2);
+
+  spo2StatEl.innerText = s.text;
+  spo2StatEl.className = 'gauge-status ' + s.cls;
+  drawClockGauge(spo2Ctx, spo2, 100, s.color);
 
   const bpm = parseInt(bpmValEl.innerText) || 0;
-  updateChart(bpm, spo2, new Date().toLocaleTimeString());
+  addToChart(bpm, spo2);
 });
 </script>
+
 </body>
 </html>
