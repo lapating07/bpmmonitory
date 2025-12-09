@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Full-Screen Live Health Dashboard</title>
+  <title>Live Health Dashboard</title>
 
   <!-- Firebase v8 -->
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
@@ -11,151 +11,125 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
-    html, body {
+    body {
       margin: 0;
       padding: 0;
-      width: 100%;
-      height: 100%;
-      background: #f5f5f5;
       font-family: Arial, sans-serif;
-      overflow: hidden;
+      background: #f5f5f5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: top;
+      height: 100vh;
     }
 
-    #dashboard {
-      position: relative;
-      width: 100%;
-      height: 100%;
+    #chart-container {
+      width: 90%;
+      height: 300px;
+      margin-top: 20px;
     }
 
-    canvas {
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
-
-    #overlay {
-      position: absolute;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
+    #values {
+      margin-top: 20px;
+      font-size: 1.8em;
       text-align: center;
-      z-index: 10;
     }
 
-    #overlay h1 {
-      margin: 5px 0;
-      font-size: 4em;
-      color: #d32f2f;
-      text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    #values span {
+      display: inline-block;
+      margin: 0 30px;
+      font-weight: bold;
     }
 
-    #overlay h2 {
-      margin: 5px 0;
-      font-size: 3em;
-      color: #1976d2;
-      text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    h2 {
+      margin: 0;
+      font-size: 1.5em;
+      color: #333;
     }
   </style>
 </head>
 <body>
 
-<div id="dashboard">
+<h2>🔴 LIVE HEART RATE MONITOR</h2>
+
+<div id="chart-container">
   <canvas id="chart"></canvas>
-  <div id="overlay">
-    <h1>BPM: <span id="bpm">--</span></h1>
-    <h2>SpO₂: <span id="spo2">--</span></h2>
-  </div>
+</div>
+
+<div id="values">
+  <span>BPM: <span id="bpm">--</span></span>
+  <span>SpO₂: <span id="spo2">--</span></span>
 </div>
 
 <script>
 /* ===== Firebase Config ===== */
 const firebaseConfig = {
   apiKey: "AIzaSyB8yZZHmjx4ExnkeV_V5iieSK5tSdY_Uqo",
-  databaseURL: "https://bpmhealth-813a8-default-rtdb.firebaseio.com"
+  databaseURL: "https://bpmhealth-813a8-default-rtdb.firebaseio.com/"
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 /* ===== DOM Elements ===== */
-const bpm = document.getElementById("bpm");
-const spo2 = document.getElementById("spo2");
+const bpmEl = document.getElementById("bpm");
+const spo2El = document.getElementById("spo2");
 const ctx = document.getElementById("chart").getContext("2d");
 
-/* ===== Chart.js ===== */
-const graph = new Chart(ctx, {
+/* ===== Chart.js - Live Line ===== */
+const chart = new Chart(ctx, {
   type: "line",
   data: {
     labels: [],
-    datasets: [
-      {
-        label: "BPM",
-        data: [],
-        borderColor: "#d32f2f",
-        backgroundColor: "rgba(211, 47, 47, 0.2)",
-        borderWidth: 3,
-        pointRadius: 0,
-        fill: true,
-        tension: 0.3
-      },
-      {
-        label: "SpO₂",
-        data: [],
-        borderColor: "#1976d2",
-        backgroundColor: "rgba(25, 118, 210, 0.2)",
-        borderWidth: 3,
-        pointRadius: 0,
-        fill: true,
-        tension: 0.3
-      }
-    ]
+    datasets: [{
+      label: "Heart Rate (BPM)",
+      data: [],
+      borderColor: "#d32f2f",
+      borderWidth: 2,
+      pointRadius: 0,
+      fill: false,
+      tension: 0.2
+    }]
   },
   options: {
     responsive: true,
-    maintainAspectRatio: false,
     animation: false,
+    maintainAspectRatio: false,
     scales: {
       x: {
-        ticks: { font: { size: 16 }, color: "#333" },
-        title: { display: true, text: "Time", font: { size: 18, weight: 'bold' }, color: "#333" },
-        grid: { color: "#ccc" }
+        display: false
       },
       y: {
-        min: 0,
-        max: 200,
-        ticks: { font: { size: 16 }, color: "#333" },
-        title: { display: true, text: "Value", font: { size: 18, weight: 'bold' }, color: "#333" },
-        grid: { color: "#ccc" }
+        min: 40,
+        max: 180
       }
     },
     plugins: {
-      legend: { labels: { font: { size: 16 }, color: "#333" } }
+      legend: { display: false }
     }
   }
 });
 
 /* ===== LIVE DATA ===== */
-db.ref("Live").on("value", snap => {
-  const d = snap.val();
-  if (!d) return;
+db.ref("Live").on("value", snapshot => {
+  const data = snapshot.val();
+  if (!data) return;
 
-  const bpmVal = d.BPM ?? 0;
-  const spo2Val = d.SpO2 ?? 0;
+  const bpm = data.BPM ?? 0;
+  const spo2 = data.SpO2 ?? 0;
 
-  bpm.innerText = bpmVal;
-  spo2.innerText = spo2Val + "%";
+  bpmEl.innerText = bpm;
+  spo2El.innerText = spo2 + "%";
 
   const t = new Date().toLocaleTimeString();
 
-  if (graph.data.labels.length > 100) { // keep last 100 points
-    graph.data.labels.shift();
-    graph.data.datasets[0].data.shift();
-    graph.data.datasets[1].data.shift();
+  if (chart.data.labels.length > 50) { // keep last 50 points
+    chart.data.labels.shift();
+    chart.data.datasets[0].data.shift();
   }
 
-  graph.data.labels.push(t);
-  graph.data.datasets[0].data.push(bpmVal);
-  graph.data.datasets[1].data.push(spo2Val);
-  graph.update();
+  chart.data.labels.push(t);
+  chart.data.datasets[0].data.push(bpm);
+  chart.update();
 });
 </script>
 
