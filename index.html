@@ -25,7 +25,7 @@
     }
 
     #chartContainer {
-      flex: 1; /* smaller chart */
+      flex: 1;
       display: flex;
       justify-content: center;
       align-items: center;
@@ -41,7 +41,8 @@
     }
 
     #historyContainer {
-      flex: 2; /* bigger history */
+      display: none; /* hidden by default */
+      flex: 2;
       overflow-y: auto;
       padding: 10px 20px;
     }
@@ -59,6 +60,18 @@
 
     th { background-color: #ddd; }
     tr:nth-child(even) { background-color: #eee; }
+
+    #toggleHistoryBtn {
+      margin: 5px auto 10px auto;
+      display: block;
+      padding: 10px 20px;
+      font-size: 1em;
+      border-radius: 5px;
+      border: none;
+      background-color: #ff4081;
+      color: #fff;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -73,6 +86,9 @@
 <div id="chartContainer">
   <canvas id="liveChart"></canvas>
 </div>
+
+<!-- Button to toggle history -->
+<button id="toggleHistoryBtn">Show History Log</button>
 
 <!-- History Table -->
 <div id="historyContainer">
@@ -102,12 +118,25 @@ const db = firebase.database();
 const bpmEl = document.getElementById("bpm");
 const spo2El = document.getElementById("spo2");
 const historyTableBody = document.querySelector("#historyTable tbody");
+const historyContainer = document.getElementById("historyContainer");
+const toggleHistoryBtn = document.getElementById("toggleHistoryBtn");
+
+// Toggle history table visibility
+toggleHistoryBtn.addEventListener("click", () => {
+  if(historyContainer.style.display === "none"){
+    historyContainer.style.display = "block";
+    toggleHistoryBtn.innerText = "Hide History Log";
+  } else {
+    historyContainer.style.display = "none";
+    toggleHistoryBtn.innerText = "Show History Log";
+  }
+});
 
 const ctx = document.getElementById("liveChart").getContext("2d");
 const liveChart = new Chart(ctx, {
   type: "line",
   data: {
-    labels: Array(50).fill(""), // empty labels for smooth scrolling
+    labels: Array(50).fill(""),
     datasets: [
       { label: "BPM", data: Array(50).fill(null), borderColor: "#ff0000", fill: false },
       { label: "SpO₂", data: Array(50).fill(null), borderColor: "#00aa00", fill: false }
@@ -118,15 +147,14 @@ const liveChart = new Chart(ctx, {
     responsive: true,
     scales: { y: { beginAtZero: true, suggestedMax: 150 } },
     plugins: { legend: { position: "top" } },
-    elements: { line: { tension: 0.3 } } // smooth line
+    elements: { line: { tension: 0.3 } }
   }
 });
 
-// Store latest values for animation
 let currentBPM = 0;
 let currentSpO2 = 0;
 
-// Live data from Firebase
+// Live data
 db.ref("Live").on("value", snap => {
   const d = snap.val();
   if (!d) return;
@@ -135,7 +163,7 @@ db.ref("Live").on("value", snap => {
   bpmEl.innerText = currentBPM;
   spo2El.innerText = currentSpO2 + "%";
 
-  // Add row to history table
+  // Add to history table
   const row = historyTableBody.insertRow(0);
   row.insertCell(0).innerText = new Date().toLocaleString();
   row.insertCell(1).innerText = currentBPM;
@@ -153,7 +181,7 @@ setInterval(() => {
   liveChart.data.datasets[0].data.shift();
   liveChart.data.datasets[1].data.shift();
   liveChart.update();
-}, 500); // updates every 0.5s for smooth effect
+}, 500);
 </script>
 
 </body>
