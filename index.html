@@ -17,55 +17,13 @@
       align-items: center;
     }
 
-    h2 {
-      color: #ff4081;
-      margin: 10px 0;
-    }
-
-    #liveValues {
-      font-size: 1.5em;
-      margin-bottom: 10px;
-    }
-
-    #chartContainer {
-      width: 90%;
-      max-width: 800px;
-      height: 250px; /* small chart at the top */
-      margin-bottom: 10px;
-    }
-
-    #toggleHistoryBtn {
-      margin-bottom: 10px;
-      padding: 10px 20px;
-      font-size: 1em;
-      border-radius: 5px;
-      border: none;
-      background-color: #ff4081;
-      color: #fff;
-      cursor: pointer;
-    }
-
-    #historyContainer {
-      display: none;
-      width: 90%;
-      max-width: 800px;
-      overflow-y: auto;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      background: #fff;
-      border-radius: 5px;
-      overflow: hidden;
-    }
-
-    th, td {
-      border: 1px solid #999;
-      padding: 8px;
-      text-align: center;
-    }
-
+    h2 { color: #ff4081; margin: 10px 0; }
+    #liveValues { font-size: 1.5em; margin-bottom: 10px; }
+    #chartContainer { width: 90%; max-width: 800px; height: 250px; margin-bottom: 10px; }
+    #toggleHistoryBtn { margin-bottom: 10px; padding: 10px 20px; font-size: 1em; border-radius: 5px; border: none; background-color: #ff4081; color: #fff; cursor: pointer; }
+    #historyContainer { display: none; width: 90%; max-width: 800px; overflow-y: auto; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 5px; overflow: hidden; }
+    th, td { border: 1px solid #999; padding: 8px; text-align: center; }
     th { background-color: #ddd; }
     tr:nth-child(even) { background-color: #eee; }
   </style>
@@ -74,9 +32,7 @@
 
 <h2>🔴 LIVE HEART RATE MONITOR</h2>
 
-<div id="liveValues">
-  BPM: <span id="bpm">--</span> | SpO₂: <span id="spo2">--</span>
-</div>
+<div id="liveValues">BPM: <span id="bpm">--</span> | SpO₂: <span id="spo2">--</span></div>
 
 <div id="chartContainer">
   <canvas id="liveChart"></canvas>
@@ -88,15 +44,9 @@
   <h3>Measurement History</h3>
   <table id="historyTable">
     <thead>
-      <tr>
-        <th>Time</th>
-        <th>BPM</th>
-        <th>SpO₂</th>
-      </tr>
+      <tr><th>Time</th><th>BPM</th><th>SpO₂</th></tr>
     </thead>
-    <tbody>
-      <!-- History rows will be added here -->
-    </tbody>
+    <tbody></tbody>
   </table>
 </div>
 
@@ -114,7 +64,7 @@ const historyTableBody = document.querySelector("#historyTable tbody");
 const historyContainer = document.getElementById("historyContainer");
 const toggleHistoryBtn = document.getElementById("toggleHistoryBtn");
 
-// Toggle history table visibility
+// Toggle history table
 toggleHistoryBtn.addEventListener("click", () => {
   if(historyContainer.style.display === "none"){
     historyContainer.style.display = "block";
@@ -125,6 +75,7 @@ toggleHistoryBtn.addEventListener("click", () => {
   }
 });
 
+// Chart setup
 const ctx = document.getElementById("liveChart").getContext("2d");
 const liveChart = new Chart(ctx, {
   type: "line",
@@ -144,30 +95,39 @@ const liveChart = new Chart(ctx, {
   }
 });
 
+// Buffers for live measurement
+let liveBPMBuffer = [];
+let liveSpO2Buffer = [];
+
+// For chart animation
 let currentBPM = 0;
 let currentSpO2 = 0;
 
-// Live data
+// Listen to live Firebase data
 db.ref("Live").on("value", snap => {
   const d = snap.val();
   if (!d) return;
-  currentBPM = d.BPM ?? 0;
-  currentSpO2 = d.SpO2 ?? 0;
-  bpmEl.innerText = currentBPM;
-  spo2El.innerText = currentSpO2 + "%";
 
-  // Add to history table
-  const row = historyTableBody.insertRow(0);
-  row.insertCell(0).innerText = new Date().toLocaleString();
-  row.insertCell(1).innerText = currentBPM;
-  row.insertCell(2).innerText = currentSpO2 + "%";
+  const bpm = d.BPM ?? 0;
+  const spo2 = d.SpO2 ?? 0;
 
-  if(historyTableBody.rows.length > 50){
-    historyTableBody.deleteRow(historyTableBody.rows.length - 1);
-  }
+  bpmEl.innerText = bpm;
+  spo2El.innerText = spo2 + "%";
+
+  // Add to live buffer
+  liveBPMBuffer.push(bpm);
+  liveSpO2Buffer.push(spo2);
+
+  // Keep buffer size manageable
+  if (liveBPMBuffer.length > 20) liveBPMBuffer.shift();
+  if (liveSpO2Buffer.length > 20) liveSpO2Buffer.shift();
+
+  // Update current values for chart animation
+  currentBPM = bpm;
+  currentSpO2 = spo2;
 });
 
-// Animate chart smoothly
+// Every 0.5s, update chart
 setInterval(() => {
   liveChart.data.datasets[0].data.push(currentBPM);
   liveChart.data.datasets[1].data.push(currentSpO2);
@@ -175,6 +135,34 @@ setInterval(() => {
   liveChart.data.datasets[1].data.shift();
   liveChart.update();
 }, 500);
+
+// Check buffer to find stable value every 2s
+setInterval(() => {
+  if(liveBPMBuffer.length < 5) return; // not enough data
+
+  // Calculate average
+  const avgBPM = Math.round(liveBPMBuffer.reduce((a,b)=>a+b)/liveBPMBuffer.length);
+  const avgSpO2 = Math.round(liveSpO2Buffer.reduce((a,b)=>a+b)/liveSpO2Buffer.length);
+
+  // Check if last values are close to average (stable)
+  const bpmStable = liveBPMBuffer.every(v => Math.abs(v - avgBPM) <= 2);
+  const spo2Stable = liveSpO2Buffer.every(v => Math.abs(v - avgSpO2) <= 1);
+
+  if(bpmStable && spo2Stable){
+    // Add stable measurement to history table
+    const row = historyTableBody.insertRow(0);
+    row.insertCell(0).innerText = new Date().toLocaleString();
+    row.insertCell(1).innerText = avgBPM;
+    row.insertCell(2).innerText = avgSpO2 + "%";
+
+    // Keep last 50 entries
+    if(historyTableBody.rows.length > 50) historyTableBody.deleteRow(historyTableBody.rows.length - 1);
+
+    // Clear buffer for next measurement
+    liveBPMBuffer = [];
+    liveSpO2Buffer = [];
+  }
+}, 2000);
 </script>
 
 </body>
