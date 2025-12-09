@@ -6,34 +6,49 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body {
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
       background: #f0f0f0;
       color: #000;
-      font-family: Arial, sans-serif;
-      text-align: center;
-      margin: 0;
-      padding: 20px;
+      display: flex;
+      flex-direction: column;
     }
 
-    h2 { color: #ff4081; }
-
+    h2 { text-align:center; color:#ff4081; margin:10px 0; }
     #liveValues {
+      text-align:center;
       font-size: 2em;
-      margin-bottom: 20px;
+      margin-bottom: 10px;
+    }
+
+    #chartContainer {
+      flex: 2;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 10px;
     }
 
     canvas {
       background: #fff;
       border: 1px solid #ccc;
       border-radius: 8px;
-      margin: 20px 0;
-      max-width: 100%;
+      width: 90%;
+      height: 100%;
+    }
+
+    #historyContainer {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 20px;
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 20px;
     }
 
     th, td {
@@ -60,25 +75,28 @@
 </div>
 
 <!-- Live Chart -->
-<canvas id="liveChart" height="150"></canvas>
+<div id="chartContainer">
+  <canvas id="liveChart"></canvas>
+</div>
 
 <!-- History Table -->
-<h3>Measurement History</h3>
-<table id="historyTable">
-  <thead>
-    <tr>
-      <th>Time</th>
-      <th>BPM</th>
-      <th>SpO₂</th>
-    </tr>
-  </thead>
-  <tbody>
-    <!-- History rows will be added here -->
-  </tbody>
-</table>
+<div id="historyContainer">
+  <h3>Measurement History</h3>
+  <table id="historyTable">
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>BPM</th>
+        <th>SpO₂</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- History rows will be added here -->
+    </tbody>
+  </table>
+</div>
 
 <script>
-  // Firebase config
   const firebaseConfig = {
     apiKey: "AIzaSyB8yZZHmjx4ExnkeV_V5iieSK5tSdY_Uqo",
     databaseURL: "https://bpmhealth-813a8-default-rtdb.firebaseio.com/"
@@ -90,7 +108,6 @@
   const spo2El = document.getElementById("spo2");
   const historyTableBody = document.querySelector("#historyTable tbody");
 
-  // ===== Live Chart =====
   const liveCtx = document.getElementById("liveChart").getContext("2d");
   const liveChart = new Chart(liveCtx, {
     type: "line",
@@ -98,10 +115,15 @@
       { label: "BPM", data: [], borderColor: "#ff0000", fill: false },
       { label: "SpO₂", data: [], borderColor: "#00aa00", fill: false }
     ]},
-    options: { responsive: true, animation: { duration: 0 }, scales: { y: { beginAtZero:true } } }
+    options: {
+      responsive: true,
+      animation: { duration: 0 },
+      scales: { y: { beginAtZero: true } },
+      plugins: { legend: { position: "top" } }
+    }
   });
 
-  // ===== Live Data =====
+  // Live data listener
   db.ref("Live").on("value", snap => {
     const d = snap.val();
     if (!d) return;
@@ -117,7 +139,7 @@
     liveChart.data.labels.push(timeLabel);
     liveChart.data.datasets[0].data.push(bpm);
     liveChart.data.datasets[1].data.push(spo2);
-    if(liveChart.data.labels.length > 30) { 
+    if(liveChart.data.labels.length > 30){
       liveChart.data.labels.shift();
       liveChart.data.datasets[0].data.shift();
       liveChart.data.datasets[1].data.shift();
@@ -125,13 +147,13 @@
     liveChart.update();
 
     // Add row to history table
-    const row = historyTableBody.insertRow(0); // newest at top
+    const row = historyTableBody.insertRow(0);
     row.insertCell(0).innerText = new Date().toLocaleString();
     row.insertCell(1).innerText = bpm;
     row.insertCell(2).innerText = spo2 + "%";
 
     // Limit to last 50 rows
-    if(historyTableBody.rows.length > 50) {
+    if(historyTableBody.rows.length > 50){
       historyTableBody.deleteRow(historyTableBody.rows.length - 1);
     }
   });
