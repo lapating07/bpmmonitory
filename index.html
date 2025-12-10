@@ -4,13 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Heartbeat Monitor Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
       background: #f5f5f5;
-      color: #333;
       text-align: center;
       padding: 20px;
+      color: #333;
     }
     h1 { color: #e74c3c; }
     .card {
@@ -19,23 +20,17 @@
       margin: 20px auto;
       border-radius: 15px;
       box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-      max-width: 400px;
+      max-width: 700px;
     }
     .value {
       font-size: 2.5rem;
       font-weight: bold;
       margin: 10px 0;
     }
-    table {
-      width: 100%;
-      border-collapse: collapse;
+    canvas {
+      max-width: 100%;
       margin-top: 20px;
     }
-    th, td {
-      padding: 8px 12px;
-      border-bottom: 1px solid #ddd;
-    }
-    th { background-color: #e74c3c; color: white; }
   </style>
 </head>
 <body>
@@ -49,17 +44,8 @@
   </div>
 
   <div class="card">
-    <h2>History</h2>
-    <table id="historyTable">
-      <thead>
-        <tr>
-          <th>Timestamp</th>
-          <th>BPM</th>
-          <th>SpO₂</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+    <h2>Live Graph</h2>
+    <canvas id="chart"></canvas>
   </div>
 
   <!-- Firebase JS SDK -->
@@ -71,48 +57,98 @@
     const firebaseConfig = {
       apiKey: "AIzaSyB8yZZHmjx4ExnkeV_V5iieSK5tSdY_Uqo",
       authDomain: "bpmhealth-813a8.firebaseapp.com",
-      databaseURL: "https://bpmhealth-813a8-default-rtdb.firebaseio.com/",
+      databaseURL: "https://bpmhealth-813a8-default-rtdb.firebaseio.com",
       projectId: "bpmhealth-813a8",
       storageBucket: "bpmhealth-813a8.appspot.com",
-      messagingSenderId: "1234567890",
-      appId: "1:1234567890:web:abcdef123456"
+      messagingSenderId: "503689688190",
+      appId: "1:503689688190:web:2a5e729b1768088e46942f"
     };
 
     // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // ======= Live Data =======
+    // ======= Elements =======
     const bpmEl = document.getElementById("bpm");
     const spo2El = document.getElementById("spo2");
 
+    // ======= Chart Setup =======
+    const ctx = document.getElementById('chart').getContext('2d');
+    const chartData = {
+      labels: [],
+      datasets: [
+        {
+          label: 'BPM',
+          data: [],
+          borderColor: 'red',
+          backgroundColor: 'rgba(255,0,0,0.2)',
+          yAxisID: 'y1'
+        },
+        {
+          label: 'SpO₂',
+          data: [],
+          borderColor: 'blue',
+          backgroundColor: 'rgba(0,0,255,0.2)',
+          yAxisID: 'y2'
+        }
+      ]
+    };
+
+    const chartOptions = {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      stacked: false,
+      scales: {
+        y1: {
+          type: 'linear',
+          position: 'left',
+          title: { display: true, text: 'BPM' },
+          min: 40,
+          max: 180
+        },
+        y2: {
+          type: 'linear',
+          position: 'right',
+          title: { display: true, text: 'SpO₂ (%)' },
+          min: 80,
+          max: 100,
+          grid: { drawOnChartArea: false }
+        }
+      }
+    };
+
+    const myChart = new Chart(ctx, {
+      type: 'line',
+      data: chartData,
+      options: chartOptions
+    });
+
+    // ======= Live Data Listener =======
     const liveRef = ref(db, "Live/");
     onValue(liveRef, (snapshot) => {
       const data = snapshot.val();
       if(data) {
-        bpmEl.textContent = data.BPM || "--";
-        spo2El.textContent = data.SpO2 || "--";
-      }
-    });
+        const bpm = data.BPM || 0;
+        const spo2 = data.SpO2 || 0;
+        const timeLabel = new Date().toLocaleTimeString();
 
-    // ======= History Data =======
-    const historyTable = document.getElementById("historyTable").querySelector("tbody");
-    const historyRef = ref(db, "History/");
+        // Update values
+        bpmEl.textContent = bpm;
+        spo2El.textContent = spo2;
 
-    onValue(historyRef, (snapshot) => {
-      const data = snapshot.val();
-      historyTable.innerHTML = ""; // Clear table
-      if(data) {
-        const sortedKeys = Object.keys(data).sort();
-        sortedKeys.forEach(key => {
-          const row = document.createElement("tr");
-          row.innerHTML = `
-            <td>${data[key].time || key}</td>
-            <td>${data[key].bpm}</td>
-            <td>${data[key].spo2}</td>
-          `;
-          historyTable.appendChild(row);
-        });
+        // Update chart
+        chartData.labels.push(timeLabel);
+        chartData.datasets[0].data.push(bpm);
+        chartData.datasets[1].data.push(spo2);
+
+        // Keep only last 20 points
+        if(chartData.labels.length > 20){
+          chartData.labels.shift();
+          chartData.datasets[0].data.shift();
+          chartData.datasets[1].data.shift();
+        }
+
+        myChart.update();
       }
     });
   </script>
