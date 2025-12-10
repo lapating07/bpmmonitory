@@ -1,196 +1,43 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Live Heart Monitor Dashboard</title>
-
-  <!-- Firebase v8 -->
-  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-  <style>
-    body {
-      margin: 0;
-      padding: 10px;
-      font-family: Arial, sans-serif;
-      background: #f4f6f8;
-      text-align: center;
-    }
-
-    h2 {
-      margin: 5px 0;
-      color: #ff1744;
-    }
-
-    #values {
-      font-size: 22px;
-      font-weight: bold;
-      margin-bottom: 10px;
-    }
-
-    #chartBox {
-      width: 100%;
-      max-width: 900px;
-      margin: auto;
-    }
-
-    canvas {
-      background: #fff;
-      border-radius: 8px;
-      border: 1px solid #ddd;
-    }
-
-    #historyBtn {
-      margin: 10px 0;
-      padding: 10px 25px;
-      font-size: 16px;
-      background: #ff1744;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-
-    #historyTable {
-      display: none;
-      width: 100%;
-      max-width: 900px;
-      margin: auto;
-      border-collapse: collapse;
-      background: white;
-      margin-top: 10px;
-    }
-
-    #historyTable th, #historyTable td {
-      border: 1px solid #ccc;
-      padding: 8px;
-      font-size: 15px;
-      text-align: center;
-    }
-
-    #historyTable th {
-      background: #ff1744;
-      color: white;
-    }
-  </style>
-</head>
-
-<body>
-
-  <h2>❤️ Live Heart Monitor</h2>
-
-  <div id="values">
-    BPM: <span id="bpmVal">--</span> |
-    SpO₂: <span id="spo2Val">--</span>
-  </div>
-
-  <div id="chartBox">
-    <canvas id="liveChart" height="130"></canvas>
-  </div>
-
-  <button id="historyBtn">Show History Table</button>
-
-  <table id="historyTable">
-    <tr>
-      <th>Date & Time</th>
-      <th>BPM</th>
-      <th>SpO₂</th>
-    </tr>
-  </table>
-
-<script>
-  // ==== Firebase Config ====
-  const firebaseConfig = {
-    apiKey: "AIzaSyB8yZZHmjx4ExnkeV_V5iieSK5tSdY_Uqo",
-    databaseURL: "https://bpmhealth-813a8-default-rtdb.firebaseio.com/"
-  };
-
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
-
-  const bpmVal  = document.getElementById("bpmVal");
-  const spo2Val = document.getElementById("spo2Val");
-  const btn     = document.getElementById("historyBtn");
-  const table   = document.getElementById("historyTable");
-
-  // ==== Chart Setup (ECG style) ====
-  const ctx = document.getElementById("liveChart").getContext("2d");
-  const data = {
-    labels: [],
-    datasets: [{
+const chartData = {
+  labels: [],
+  datasets: [
+    {
       label: "Pulse Wave",
       data: [],
-      borderColor: "#ff1744",
+      borderColor: "#ff004c",
       borderWidth: 2,
-      tension: 0.4,
-      fill: false,
-      pointRadius: 0
-    }]
-  };
-
-  const chart = new Chart(ctx, {
-    type: "line",
-    data: data,
-    options: {
-      animation: false,
-      responsive: true,
-      scales: {
-        x: { display: false },
-        y: { min: 0, max: 150 }
-      },
-      plugins: { legend: { display: false } }
+      pointRadius: 0,
+      tension: 0.1
     }
-  });
+  ]
+};
 
-  // ==== Live Data Listener ====
-  db.ref("Live").on("value", snap => {
-    const v = snap.val();
-    if (!v) return;
-
-    bpmVal.innerText  = v.BPM;
-    spo2Val.innerText = v.SpO2;
-
-    const timeNow = new Date().toLocaleTimeString();
-    data.labels.push(timeNow);
-    data.datasets[0].data.push(v.BPM);
-
-    if (data.labels.length > 50) {
-      data.labels.shift();
-      data.datasets[0].data.shift();
+const liveChart = new Chart(ctx, {
+  type: "line",
+  data: chartData,
+  options: {
+    responsive: true,
+    animation: false,
+    scales: {
+      x: { display: false },
+      y: { min: 20000, max: 100000 }
     }
-
-    chart.update();
-  });
-
-  // ==== Show / Hide History ====
-  btn.onclick = () => {
-    if (table.style.display === "none") {
-      table.style.display = "table";
-      loadHistory();
-      btn.textContent = "Hide History Table";
-    } else {
-      table.style.display = "none";
-      btn.textContent = "Show History Table";
-    }
-  };
-
-  // ==== Load History from Firebase ====
-  function loadHistory() {
-    while (table.rows.length > 1) table.deleteRow(1);
-
-    db.ref("History").limitToLast(50).once("value", snap => {
-      snap.forEach(child => {
-        const d = child.val();
-        const row = table.insertRow();
-        row.insertCell(0).innerText = d.time;
-        row.insertCell(1).innerText = d.bpm;
-        row.insertCell(2).innerText = d.spo2;
-      });
-    });
   }
-</script>
+});
 
-</body>
-</html>
+// Live Wave Listener
+db.ref("Live/Wave").on("value", snap => {
+  const wave = snap.val();
+  if (!wave) return;
+
+  const t = new Date().toLocaleTimeString();
+  chartData.labels.push(t);
+  chartData.datasets[0].data.push(wave);
+
+  if (chartData.labels.length > 100) {
+    chartData.labels.shift();
+    chartData.datasets[0].data.shift();
+  }
+
+  liveChart.update();
+});
