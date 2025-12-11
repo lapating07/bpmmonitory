@@ -1,206 +1,150 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Measurement History Dashboard</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Heartbeat & SpO₂ Dashboard</title>
 
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-  <style>
-    body {
-      background: #f5f7fa;
-      color: #222;
-      font-family: Arial, sans-serif;
-      text-align: center;
-      padding: 30px;
-    }
-
-    h1 {
-      margin-bottom: 20px;
-      color: #333;
-    }
-
-    .chart-container {
-      width: 95%;
-      max-width: 1100px;
-      margin: auto;
-      background: white;
-      border-radius: 12px;
-      padding: 25px;
-      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-    }
-
-    canvas {
-      margin-top: 15px;
-    }
-
-    /* ---- HISTORY TABLE ---- */
-    table {
-      width: 95%;
-      max-width: 1100px;
-      margin: 30px auto;
-      border-collapse: collapse;
-      background: white;
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-    }
-
-    th, td {
-      padding: 12px;
-      border-bottom: 1px solid #e5e5e5;
-    }
-
-    th {
-      background: #f0f0f0;
-      font-size: 1rem;
-      color: #333;
-    }
-
-    tr:hover {
-      background: #f9f9f9;
-    }
-
-  </style>
+<style>
+body { background: #f5f7fa; color: #222; font-family: Arial, sans-serif; text-align: center; padding: 30px; }
+h1, h2 { color: #333; }
+.card { background: white; border-radius: 12px; padding: 20px; margin: 20px auto; max-width: 600px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+.value { font-size: 2rem; font-weight: bold; margin: 10px 0; }
+.chart-container { width: 95%; max-width: 1100px; margin: auto; background: white; border-radius: 12px; padding: 25px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+table { width: 95%; max-width: 1100px; margin: 30px auto; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+th, td { padding: 12px; border-bottom: 1px solid #e5e5e5; }
+th { background: #f0f0f0; font-size: 1rem; color: #333; }
+tr:hover { background: #f9f9f9; }
+</style>
 </head>
-
 <body>
 
-  <h1>📊 Measurement History Dashboard</h1>
+<h1>📡 Heartbeat & SpO₂ Dashboard</h1>
 
-  <!-- GRAPH -->
-  <div class="chart-container">
-    <canvas id="historyChart"></canvas>
-  </div>
+<!-- LIVE READINGS CARD -->
+<div class="card">
+  <h2>Live Measurement</h2>
+  <div>BPM: <span class="value" id="liveBPM">--</span></div>
+  <div>SpO₂: <span class="value" id="liveSpO2">--</span></div>
+</div>
 
-  <!-- TABLE -->
-  <h1 style="margin-top:40px;">📄 Measurement History Table</h1>
+<!-- LIVE GRAPH -->
+<h2>📈 Live Graph (Updates per Second)</h2>
+<div class="chart-container">
+  <canvas id="liveChart"></canvas>
+</div>
 
-  <table id="historyTable">
-    <thead>
-      <tr>
-        <th>Date</th>
-        <th>Time</th>
-        <th>BPM</th>
-        <th>SpO₂ (%)</th>
-      </tr>
-    </thead>
-    <tbody>
-      <!-- Auto-filled by JS -->
-    </tbody>
-  </table>
+<!-- HISTORY GRAPH -->
+<h2>📊 History Graph (Stable Measurements)</h2>
+<div class="chart-container">
+  <canvas id="historyChart"></canvas>
+</div>
 
-  <script>
-    // ==========================
-    // 🔥 FIREBASE CONFIG
-    // ==========================
-    const firebaseConfig = {
-      apiKey: "AIzaSyCOzEqHCKqOZG9pbROs1JJku19yN0S9zEI",
-      authDomain: "dpmspo2.firebaseapp.com",
-      databaseURL: "https://dpmspo2-default-rtdb.firebaseio.com",
-      projectId: "dpmspo2",
-      storageBucket: "dpmspo2.firebasestorage.app",
-      messagingSenderId: "86512121446",
-      appId: "1:86512121446:web:0bad04d8fa786db26f9fa7",
-      measurementId: "G-GPDRFV8426"
-    };
+<!-- HISTORY TABLE -->
+<h2>📄 Measurement History Table</h2>
+<table id="historyTable">
+  <thead>
+    <tr><th>Date</th><th>Time</th><th>BPM</th><th>SpO₂ (%)</th></tr>
+  </thead>
+  <tbody></tbody>
+</table>
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCOzEqHCKqOZG9pbROs1JJku19yN0S9zEI",
+  authDomain: "dpmspo2.firebaseapp.com",
+  databaseURL: "https://dpmspo2-default-rtdb.firebaseio.com",
+  projectId: "dpmspo2",
+  storageBucket: "dpmspo2.firebasestorage.app",
+  messagingSenderId: "86512121446",
+  appId: "1:86512121446:web:0bad04d8fa786db26f9fa7",
+  measurementId: "G-GPDRFV8426"
+};
 
-    // ==========================================
-    // 📊 Line Graph Setup
-    // ==========================================
-    const ctx = document.getElementById("historyChart").getContext("2d");
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
-    const historyChart = new Chart(ctx, {
-      type: "line",
-      data: {
-        labels: [],
-        datasets: [
-          {
-            label: "BPM",
-            data: [],
-            borderColor: "red",
-            borderWidth: 2,
-            tension: 0.3
-          },
-          {
-            label: "SpO₂ (%)",
-            data: [],
-            borderColor: "blue",
-            borderWidth: 2,
-            tension: 0.3
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        scales: {
-          x: {
-            title: { display: true, text: "Date & Time" }
-          },
-          y: {
-            beginAtZero: false
-          }
-        }
-      }
+const liveBPM = document.getElementById("liveBPM");
+const liveSpO2 = document.getElementById("liveSpO2");
+
+// Live chart
+const liveCtx = document.getElementById("liveChart").getContext("2d");
+const liveChart = new Chart(liveCtx, {
+  type: 'line',
+  data: { labels: [], datasets: [
+    { label: "BPM", data: [], borderColor: "red", borderWidth: 2, tension: 0.3 },
+    { label: "SpO₂", data: [], borderColor: "blue", borderWidth: 2, tension: 0.3 }
+  ]},
+  options: { responsive: true, scales: { x: { title: { display:true, text:"Time (HH:MM:SS)" }}, y:{ beginAtZero:false } } }
+});
+
+// History chart
+const historyCtx = document.getElementById("historyChart").getContext("2d");
+const historyChart = new Chart(historyCtx, {
+  type: 'line',
+  data: { labels: [], datasets: [
+    { label: "BPM", data: [], borderColor: "red", borderWidth: 2, tension: 0.3 },
+    { label: "SpO₂", data: [], borderColor: "blue", borderWidth: 2, tension: 0.3 }
+  ]},
+  options: { responsive: true, scales: { x: { title: { display:true, text:"Date & Time" }}, y:{ beginAtZero:false } } }
+});
+
+const tableBody = document.querySelector("#historyTable tbody");
+
+// Load history once
+function loadHistory() {
+  db.ref("History").once("value").then(snapshot=>{
+    tableBody.innerHTML="";
+    const labels=[], bpmData=[], spo2Data=[];
+    snapshot.forEach(entry=>{
+      const d = entry.val();
+      if(!d) return;
+      const timestamp = d.time||"";
+      const date = timestamp.split(" ")[0]||"";
+      const time = timestamp.split(" ")[1]||"";
+      labels.push(timestamp);
+      bpmData.push(d.bpm);
+      spo2Data.push(d.spo2);
+      tableBody.innerHTML+=`<tr><td>${date}</td><td>${time}</td><td>${d.bpm}</td><td>${d.spo2}</td></tr>`;
     });
+    historyChart.data.labels = labels;
+    historyChart.data.datasets[0].data = bpmData;
+    historyChart.data.datasets[1].data = spo2Data;
+    historyChart.update();
+  });
+}
+loadHistory();
 
-    // ==========================================
-    // 🔄 Load Historical Data from Firebase
-    // ==========================================
-    const tableBody = document.querySelector("#historyTable tbody");
+// Live updates
+db.ref("Live").on("value", snapshot=>{
+  const live = snapshot.val();
+  if(!live) return;
+  const now = new Date();
+  const t = now.toLocaleTimeString();
+  liveBPM.innerText = live.BPM||"--";
+  liveSpO2.innerText = live.SpO2||"--";
 
-    db.ref("History").on("value", snapshot => {
-      const labels = [];
-      const bpmData = [];
-      const spo2Data = [];
+  // Update live chart
+  liveChart.data.labels.push(t);
+  liveChart.data.datasets[0].data.push(live.BPM||0);
+  liveChart.data.datasets[1].data.push(live.SpO2||0);
 
-      tableBody.innerHTML = ""; // Clear table
+  // Keep last 20 points
+  if(liveChart.data.labels.length>20){
+    liveChart.data.labels.shift();
+    liveChart.data.datasets[0].data.shift();
+    liveChart.data.datasets[1].data.shift();
+  }
 
-      snapshot.forEach(entry => {
-        const d = entry.val();
-
-        // Split timestamp into date + time
-        let date = "-", time = "-";
-        if(d.time){
-          const parts = d.time.split(" ");
-          if(parts.length == 2){
-            date = parts[0];
-            time = parts[1];
-          }
-        }
-
-        labels.push(d.time); // full timestamp for x-axis
-        bpmData.push(d.bpm);
-        spo2Data.push(d.spo2);
-
-        // Add row to table
-        const row = `
-          <tr>
-            <td>${date}</td>
-            <td>${time}</td>
-            <td>${d.bpm}</td>
-            <td>${d.spo2}</td>
-          </tr>
-        `;
-        tableBody.innerHTML += row;
-      });
-
-      // Update graph
-      historyChart.data.labels = labels;
-      historyChart.data.datasets[0].data = bpmData;
-      historyChart.data.datasets[1].data = spo2Data;
-      historyChart.update();
-    });
-  </script>
-
+  liveChart.update();
+});
+</script>
 </body>
 </html>
