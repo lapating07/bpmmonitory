@@ -41,8 +41,8 @@ tr:hover { background: #f9f9f9; }
   <canvas id="liveChart"></canvas>
 </div>
 
-<!-- HISTORY TABLE -->
-<h2>📄 Measurement History Table</h2>
+<!-- LIVE TABLE -->
+<h2>📄 Measurement Table</h2>
 <table id="historyTable">
   <thead>
     <tr><th>Date</th><th>Time</th><th>BPM</th><th>SpO₂ (%)</th></tr>
@@ -81,28 +81,16 @@ const liveChart = new Chart(liveCtx, {
 
 const tableBody = document.querySelector("#historyTable tbody");
 
-// Load history once
-function loadHistory() {
-  db.ref("History").once("value").then(snapshot=>{
-    tableBody.innerHTML="";
-    snapshot.forEach(entry=>{
-      const d = entry.val();
-      if(!d) return;
-      const timestamp = d.time||"";
-      const date = timestamp.split(" ")[0]||"";
-      const time = timestamp.split(" ")[1]||"";
-      tableBody.innerHTML+=`<tr><td>${date}</td><td>${time}</td><td>${d.bpm}</td><td>${d.spo2}</td></tr>`;
-    });
-  });
-}
-loadHistory();
-
 // Live updates
 db.ref("Live").on("value", snapshot=>{
   const live = snapshot.val();
   if(!live) return;
+  
   const now = new Date();
   const t = now.toLocaleTimeString();
+  const date = now.toLocaleDateString();
+
+  // Update live readings
   liveBPM.innerText = live.BPM||"--";
   liveSpO2.innerText = live.SpO2||"--";
 
@@ -111,14 +99,21 @@ db.ref("Live").on("value", snapshot=>{
   liveChart.data.datasets[0].data.push(live.BPM||0);
   liveChart.data.datasets[1].data.push(live.SpO2||0);
 
-  // Keep last 20 points
   if(liveChart.data.labels.length>20){
     liveChart.data.labels.shift();
     liveChart.data.datasets[0].data.shift();
     liveChart.data.datasets[1].data.shift();
   }
-
   liveChart.update();
+
+  // Add the new live measurement to the table at the top
+  const newRow = `<tr>
+    <td>${date}</td>
+    <td>${t}</td>
+    <td>${live.BPM||"--"}</td>
+    <td>${live.SpO2||"--"}</td>
+  </tr>`;
+  tableBody.innerHTML = newRow + tableBody.innerHTML;
 });
 </script>
 </body>
