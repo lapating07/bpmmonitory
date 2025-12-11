@@ -41,12 +41,6 @@ tr:hover { background: #f9f9f9; }
   <canvas id="liveChart"></canvas>
 </div>
 
-<!-- HISTORY GRAPH -->
-<h2>📊 History Graph (Stable Measurements)</h2>
-<div class="chart-container">
-  <canvas id="historyChart"></canvas>
-</div>
-
 <!-- HISTORY TABLE -->
 <h2>📄 Measurement History Table</h2>
 <table id="historyTable">
@@ -85,39 +79,20 @@ const liveChart = new Chart(liveCtx, {
   options: { responsive: true, scales: { x: { title: { display:true, text:"Time (HH:MM:SS)" }}, y:{ beginAtZero:false } } }
 });
 
-// History chart
-const historyCtx = document.getElementById("historyChart").getContext("2d");
-const historyChart = new Chart(historyCtx, {
-  type: 'line',
-  data: { labels: [], datasets: [
-    { label: "BPM", data: [], borderColor: "red", borderWidth: 2, tension: 0.3 },
-    { label: "SpO₂", data: [], borderColor: "blue", borderWidth: 2, tension: 0.3 }
-  ]},
-  options: { responsive: true, scales: { x: { title: { display:true, text:"Date & Time" }}, y:{ beginAtZero:false } } }
-});
-
 const tableBody = document.querySelector("#historyTable tbody");
 
 // Load history once
 function loadHistory() {
   db.ref("History").once("value").then(snapshot=>{
     tableBody.innerHTML="";
-    const labels=[], bpmData=[], spo2Data=[];
     snapshot.forEach(entry=>{
       const d = entry.val();
       if(!d) return;
       const timestamp = d.time||"";
       const date = timestamp.split(" ")[0]||"";
       const time = timestamp.split(" ")[1]||"";
-      labels.push(timestamp);
-      bpmData.push(d.bpm);
-      spo2Data.push(d.spo2);
       tableBody.innerHTML+=`<tr><td>${date}</td><td>${time}</td><td>${d.bpm}</td><td>${d.spo2}</td></tr>`;
     });
-    historyChart.data.labels = labels;
-    historyChart.data.datasets[0].data = bpmData;
-    historyChart.data.datasets[1].data = spo2Data;
-    historyChart.update();
   });
 }
 loadHistory();
