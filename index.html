@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Heartbeat & SpO₂ Measurement </title>
+<title>Heartbeat & SpO₂ Dashboard</title>
 
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -26,7 +26,7 @@ tr:hover { background: #f9f9f9; }
 </head>
 <body>
 
-<h1> Heartbeat & SpO₂ Dashboard</h1>
+<h1>📡 Heartbeat & SpO₂ Dashboard</h1>
 
 <!-- LIVE READINGS CARD -->
 <div class="card">
@@ -36,7 +36,7 @@ tr:hover { background: #f9f9f9; }
 </div>
 
 <!-- LIVE GRAPH -->
-<h2> Live Graph (Updates per Second)</h2>
+<h2>📈 Live Graph (Updates per Second)</h2>
 <div class="chart-container">
   <canvas id="liveChart"></canvas>
 </div>
@@ -80,14 +80,22 @@ const liveChart = new Chart(liveCtx, {
   options: { responsive: true, scales: { x: { title: { display:true, text:"Time (HH:MM:SS)" }}, y:{ beginAtZero:false } } }
 });
 
+// Track last added timestamp to prevent duplicates
+let lastTimestamp = "";
+
 // Listen for live measurements
-db.ref("Live").on("value", snapshot=>{
+db.ref("Live").on("value", snapshot => {
   const live = snapshot.val();
-  if(!live) return;
+  if (!live) return;
 
   const now = new Date();
   const t = now.toLocaleTimeString();
   const date = now.toLocaleDateString();
+
+  // Prevent duplicate row if timestamp is same
+  const currentTimestamp = date + " " + t;
+  if (currentTimestamp === lastTimestamp) return;
+  lastTimestamp = currentTimestamp;
 
   // Update live readings card
   liveBPM.innerText = live.BPM || "--";
@@ -98,7 +106,7 @@ db.ref("Live").on("value", snapshot=>{
   liveChart.data.datasets[0].data.push(live.BPM || 0);
   liveChart.data.datasets[1].data.push(live.SpO2 || 0);
 
-  if(liveChart.data.labels.length > 20){
+  if (liveChart.data.labels.length > 20) {
     liveChart.data.labels.shift();
     liveChart.data.datasets[0].data.shift();
     liveChart.data.datasets[1].data.shift();
