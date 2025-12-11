@@ -57,18 +57,16 @@
     const firebaseConfig = {
       apiKey: "AIzaSyB8yZZHmjx4ExnkeV_V5iieSK5tSdY_Uqo",
       authDomain: "bpmhealth-813a8.firebaseapp.com",
-      databaseURL: "https://bpmhealth-813a8-default-rtdb.firebaseio.com",
+      databaseURL: "https://bpmhealth-813a8-default-rtdb.firebaseio.com/",
       projectId: "bpmhealth-813a8",
       storageBucket: "bpmhealth-813a8.appspot.com",
-      messagingSenderId: "503689688190",
-      appId: "1:503689688190:web:2a5e729b1768088e46942f"
+      messagingSenderId: "1234567890",
+      appId: "1:1234567890:web:abcdef123456"
     };
 
-    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // ======= Elements =======
     const bpmEl = document.getElementById("bpm");
     const spo2El = document.getElementById("spo2");
 
@@ -123,7 +121,7 @@
       options: chartOptions
     });
 
-    // ======= Live Data Listener =======
+    // ======= Live Data =======
     const liveRef = ref(db, "Live/");
     onValue(liveRef, (snapshot) => {
       const data = snapshot.val();
@@ -132,7 +130,6 @@
         const spo2 = data.SpO2 || 0;
         const timeLabel = new Date().toLocaleTimeString();
 
-        // Update values
         bpmEl.textContent = bpm;
         spo2El.textContent = spo2;
 
@@ -141,7 +138,7 @@
         chartData.datasets[0].data.push(bpm);
         chartData.datasets[1].data.push(spo2);
 
-        // Keep only last 20 points
+        // Keep last 20 points
         if(chartData.labels.length > 20){
           chartData.labels.shift();
           chartData.datasets[0].data.shift();
