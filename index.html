@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Heartbeat & SpO₂ Dashboard</title>
+<title>Heartbeat & SpO₂ Measurement </title>
 
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -26,7 +26,7 @@ tr:hover { background: #f9f9f9; }
 </head>
 <body>
 
-<h1>📡 Heartbeat & SpO₂ Dashboard</h1>
+<h1> Heartbeat & SpO₂ Dashboard</h1>
 
 <!-- LIVE READINGS CARD -->
 <div class="card">
@@ -36,13 +36,13 @@ tr:hover { background: #f9f9f9; }
 </div>
 
 <!-- LIVE GRAPH -->
-<h2>📈 Live Graph (Updates per Second)</h2>
+<h2> Live Graph (Updates per Second)</h2>
 <div class="chart-container">
   <canvas id="liveChart"></canvas>
 </div>
 
-<!-- LIVE TABLE -->
-<h2>📄 Measurement Table</h2>
+<!-- LIVE MEASUREMENT TABLE -->
+<h2>📄 Live Measurement Table</h2>
 <table id="historyTable">
   <thead>
     <tr><th>Date</th><th>Time</th><th>BPM</th><th>SpO₂ (%)</th></tr>
@@ -67,6 +67,7 @@ const db = firebase.database();
 
 const liveBPM = document.getElementById("liveBPM");
 const liveSpO2 = document.getElementById("liveSpO2");
+const tableBody = document.querySelector("#historyTable tbody");
 
 // Live chart
 const liveCtx = document.getElementById("liveChart").getContext("2d");
@@ -79,39 +80,37 @@ const liveChart = new Chart(liveCtx, {
   options: { responsive: true, scales: { x: { title: { display:true, text:"Time (HH:MM:SS)" }}, y:{ beginAtZero:false } } }
 });
 
-const tableBody = document.querySelector("#historyTable tbody");
-
-// Live updates
+// Listen for live measurements
 db.ref("Live").on("value", snapshot=>{
   const live = snapshot.val();
   if(!live) return;
-  
+
   const now = new Date();
   const t = now.toLocaleTimeString();
   const date = now.toLocaleDateString();
 
-  // Update live readings
-  liveBPM.innerText = live.BPM||"--";
-  liveSpO2.innerText = live.SpO2||"--";
+  // Update live readings card
+  liveBPM.innerText = live.BPM || "--";
+  liveSpO2.innerText = live.SpO2 || "--";
 
   // Update live chart
   liveChart.data.labels.push(t);
-  liveChart.data.datasets[0].data.push(live.BPM||0);
-  liveChart.data.datasets[1].data.push(live.SpO2||0);
+  liveChart.data.datasets[0].data.push(live.BPM || 0);
+  liveChart.data.datasets[1].data.push(live.SpO2 || 0);
 
-  if(liveChart.data.labels.length>20){
+  if(liveChart.data.labels.length > 20){
     liveChart.data.labels.shift();
     liveChart.data.datasets[0].data.shift();
     liveChart.data.datasets[1].data.shift();
   }
   liveChart.update();
 
-  // Add the new live measurement to the table at the top
+  // Prepend new measurement to table (latest on top)
   const newRow = `<tr>
     <td>${date}</td>
     <td>${t}</td>
-    <td>${live.BPM||"--"}</td>
-    <td>${live.SpO2||"--"}</td>
+    <td>${live.BPM || "--"}</td>
+    <td>${live.SpO2 || "--"}</td>
   </tr>`;
   tableBody.innerHTML = newRow + tableBody.innerHTML;
 });
