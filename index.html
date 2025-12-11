@@ -1,90 +1,54 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Heart Monitor Dashboard</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Measurement History Chart</title>
 
-  <!-- Firebase SDK -->
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
-  <!-- Chart.js for Graph -->
+  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
     body {
-      background: #0d1117;
-      color: white;
-      font-family: Arial;
+      background: #f5f7fa;
+      color: #222;
+      font-family: Arial, sans-serif;
       text-align: center;
-      padding: 20px;
+      padding: 30px;
     }
-    .gauge-container {
-      display: flex;
-      justify-content: center;
-      gap: 40px;
+
+    h1 {
+      margin-bottom: 20px;
+      color: #333;
     }
+
+    .chart-container {
+      width: 95%;
+      max-width: 1100px;
+      margin: auto;
+      background: white;
+      border-radius: 12px;
+      padding: 25px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+
     canvas {
-      background: #111;
-      border-radius: 10px;
-      padding: 10px;
-    }
-    table {
-      width: 90%;
-      margin: 20px auto;
-      border-collapse: collapse;
-      background: #111;
-      color: white;
-    }
-    th, td {
-      padding: 10px;
-      border: 1px solid #333;
-    }
-    th {
-      background: #222;
+      margin-top: 15px;
     }
   </style>
 </head>
 
 <body>
 
-  <h1>❤️ Real-Time Heart Monitor Dashboard</h1>
+  <h1>📊 Measurement History Graph</h1>
 
-  <!-- Gauges -->
-  <div class="gauge-container">
-    <div>
-      <h2>BPM</h2>
-      <canvas id="bpmGauge" width="250" height="250"></canvas>
-    </div>
-
-    <div>
-      <h2>SpO₂</h2>
-      <canvas id="spo2Gauge" width="250" height="250"></canvas>
-    </div>
+  <div class="chart-container">
+    <canvas id="historyChart"></canvas>
   </div>
-
-  <br><br>
-
-  <!-- Graph -->
-  <h2>📈 Live BPM Graph</h2>
-  <canvas id="bpmChart" width="400" height="200"></canvas>
-
-  <br><br>
-
-  <!-- History Table -->
-  <h2>📊 Measurement History</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>BPM</th>
-        <th>SpO₂ (%)</th>
-        <th>Date</th>
-        <th>Time</th>
-      </tr>
-    </thead>
-    <tbody id="historyBody"></tbody>
-  </table>
 
   <script>
     // ==========================
@@ -104,99 +68,68 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // ==========================
-    // 🎯 GAUGE DRAW FUNCTION
-    // ==========================
-    function drawGauge(canvasId, value, max, color) {
-      const canvas = document.getElementById(canvasId);
-      const ctx = canvas.getContext("2d");
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // ==========================================
+    // 📊 Line Graph Setup (BPM + SpO2 history)
+    // ==========================================
+    const ctx = document.getElementById("historyChart").getContext("2d");
 
-      let angle = (value / max) * Math.PI;
-
-      // background arc
-      ctx.beginPath();
-      ctx.arc(125, 125, 100, Math.PI, 2 * Math.PI);
-      ctx.strokeStyle = "#333";
-      ctx.lineWidth = 20;
-      ctx.stroke();
-
-      // value arc
-      ctx.beginPath();
-      ctx.arc(125, 125, 100, Math.PI, Math.PI + angle);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 20;
-      ctx.stroke();
-
-      // text
-      ctx.fillStyle = "white";
-      ctx.font = "28px Arial";
-      ctx.textAlign = "center";
-      ctx.fillText(value, 125, 140);
-    }
-
-    // ==========================
-    // 📈 LIVE GRAPH
-    // ==========================
-    const bpmChart = new Chart(document.getElementById("bpmChart"), {
+    const historyChart = new Chart(ctx, {
       type: "line",
       data: {
-        labels: [],
-        datasets: [{
-          label: "BPM",
-          data: [],
-          borderWidth: 2
-        }]
+        labels: [], // Date + Time for x-axis
+        datasets: [
+          {
+            label: "BPM",
+            data: [],
+            borderWidth: 2
+          },
+          {
+            label: "SpO₂ (%)",
+            data: [],
+            borderWidth: 2
+          }
+        ]
       },
       options: {
         responsive: true,
         scales: {
-          y: { beginAtZero: true }
+          x: {
+            title: {
+              display: true,
+              text: "Date & Time"
+            }
+          },
+          y: {
+            beginAtZero: false
+          }
         }
       }
     });
 
-    // ==========================
-    // 🔄 REAL-TIME DATA LISTENER
-    // ==========================
-    db.ref("SensorData").on("value", snapshot => {
-      if (!snapshot.exists()) return;
-
-      const bpm = snapshot.val().BPM ?? 0;
-      const spo2 = snapshot.val().SpO2 ?? 0;
-      const time = snapshot.val().Time ?? "";
-      const date = snapshot.val().Date ?? "";
-
-      drawGauge("bpmGauge", bpm, 200, "#ff4747");
-      drawGauge("spo2Gauge", spo2, 100, "#00bfff");
-
-      // Update graph
-      bpmChart.data.labels.push(time);
-      bpmChart.data.datasets[0].data.push(bpm);
-      bpmChart.update();
-    });
-
-    // ==========================
-    // 📊 LOAD HISTORY TABLE
-    // ==========================
+    // ==========================================
+    // 🔄 Load Historical Data from Firebase
+    // ==========================================
     db.ref("History").on("value", snapshot => {
-      const tbody = document.getElementById("historyBody");
-      tbody.innerHTML = "";
+      const labels = [];
+      const bpmData = [];
+      const spo2Data = [];
 
-      snapshot.forEach(item => {
-        const data = item.val();
+      snapshot.forEach(entry => {
+        const d = entry.val();
 
-        const row = `
-          <tr>
-            <td>${data.BPM}</td>
-            <td>${data.SpO2}</td>
-            <td>${data.Date}</td>
-            <td>${data.Time}</td>
-          </tr>
-        `;
+        // Combine date + time into one x-axis label
+        const label = `${d.Date} ${d.Time}`;
 
-        tbody.innerHTML += row;
+        labels.push(label);
+        bpmData.push(d.BPM);
+        spo2Data.push(d.SpO2);
       });
+
+      historyChart.data.labels = labels;
+      historyChart.data.datasets[0].data = bpmData;
+      historyChart.data.datasets[1].data = spo2Data;
+
+      historyChart.update();
     });
   </script>
 
