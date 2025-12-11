@@ -39,6 +39,34 @@
     canvas {
       margin-top: 15px;
     }
+
+    /* ---- HISTORY TABLE ---- */
+    table {
+      width: 95%;
+      max-width: 1100px;
+      margin: 30px auto;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+
+    th, td {
+      padding: 12px;
+      border-bottom: 1px solid #e5e5e5;
+    }
+
+    th {
+      background: #f0f0f0;
+      font-size: 1rem;
+      color: #333;
+    }
+
+    tr:hover {
+      background: #f9f9f9;
+    }
+
   </style>
 </head>
 
@@ -46,9 +74,27 @@
 
   <h1>📊 Measurement History Graph</h1>
 
+  <!-- GRAPH -->
   <div class="chart-container">
     <canvas id="historyChart"></canvas>
   </div>
+
+  <!-- TABLE -->
+  <h1 style="margin-top:40px;">📄 Measurement History Table</h1>
+
+  <table id="historyTable">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Time</th>
+        <th>BPM</th>
+        <th>SpO₂ (%)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- Auto-filled by JS -->
+    </tbody>
+  </table>
 
   <script>
     // ==========================
@@ -69,24 +115,28 @@
     const db = firebase.database();
 
     // ==========================================
-    // 📊 Line Graph Setup (BPM + SpO2 history)
+    // 📊 Line Graph Setup
     // ==========================================
     const ctx = document.getElementById("historyChart").getContext("2d");
 
     const historyChart = new Chart(ctx, {
       type: "line",
       data: {
-        labels: [], // Date + Time for x-axis
+        labels: [],
         datasets: [
           {
             label: "BPM",
             data: [],
-            borderWidth: 2
+            borderColor: "red",
+            borderWidth: 2,
+            tension: 0.3
           },
           {
             label: "SpO₂ (%)",
             data: [],
-            borderWidth: 2
+            borderColor: "blue",
+            borderWidth: 2,
+            tension: 0.3
           }
         ]
       },
@@ -94,10 +144,7 @@
         responsive: true,
         scales: {
           x: {
-            title: {
-              display: true,
-              text: "Date & Time"
-            }
+            title: { display: true, text: "Date & Time" }
           },
           y: {
             beginAtZero: false
@@ -109,26 +156,39 @@
     // ==========================================
     // 🔄 Load Historical Data from Firebase
     // ==========================================
+    const tableBody = document.querySelector("#historyTable tbody");
+
     db.ref("History").on("value", snapshot => {
       const labels = [];
       const bpmData = [];
       const spo2Data = [];
 
+      tableBody.innerHTML = ""; // Clear table
+
       snapshot.forEach(entry => {
         const d = entry.val();
 
-        // Combine date + time into one x-axis label
         const label = `${d.Date} ${d.Time}`;
-
         labels.push(label);
         bpmData.push(d.BPM);
         spo2Data.push(d.SpO2);
+
+        // Add row to table
+        const row = `
+          <tr>
+            <td>${d.Date}</td>
+            <td>${d.Time}</td>
+            <td>${d.BPM}</td>
+            <td>${d.SpO2}</td>
+          </tr>
+        `;
+        tableBody.innerHTML += row;
       });
 
+      // Update graph
       historyChart.data.labels = labels;
       historyChart.data.datasets[0].data = bpmData;
       historyChart.data.datasets[1].data = spo2Data;
-
       historyChart.update();
     });
   </script>
