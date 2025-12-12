@@ -86,8 +86,8 @@ const liveChart = new Chart(ctx, {
   }
 });
 
-// Keep track of last measurement to avoid duplicates
-let lastMeasurement = null;
+// Keep track of last saved measurement
+let lastMeasurement = { BPM: null, SpO2: null };
 
 // Function to add measurement to table
 function addToTable(measurement) {
@@ -109,29 +109,26 @@ db.ref("Live").on("value", snapshot => {
   if (!data) return;
 
   const now = new Date();
-  const date = now.toLocaleDateString();
-  const time = now.toLocaleTimeString();
-
   const measurement = {
     BPM: data.BPM,
     SpO2: data.SpO2,
-    date: date,
-    time: time
+    date: now.toLocaleDateString(),
+    time: now.toLocaleTimeString()
   };
 
-  // Update live display
+  // Update live card
   liveBPM.innerText = measurement.BPM;
   liveSpO2.innerText = measurement.SpO2;
 
-  // Only save and plot if new measurement
-  if (!lastMeasurement || lastMeasurement.BPM !== measurement.BPM || lastMeasurement.SpO2 !== measurement.SpO2) {
-    lastMeasurement = measurement;
+  // Only save and plot if measurement changed
+  if (measurement.BPM !== lastMeasurement.BPM || measurement.SpO2 !== lastMeasurement.SpO2) {
+    lastMeasurement = { BPM: measurement.BPM, SpO2: measurement.SpO2 };
 
     // Add to graph
-    liveChart.data.labels.push(time);
+    liveChart.data.labels.push(measurement.time);
     liveChart.data.datasets[0].data.push(measurement.BPM);
     liveChart.data.datasets[1].data.push(measurement.SpO2);
-    if (liveChart.data.labels.length > 10) { // limit to last 10
+    if (liveChart.data.labels.length > 10) {
       liveChart.data.labels.shift();
       liveChart.data.datasets[0].data.shift();
       liveChart.data.datasets[1].data.shift();
@@ -145,7 +142,7 @@ db.ref("Live").on("value", snapshot => {
     const key = db.ref("Measurements").push().key;
     db.ref("Measurements/" + key).set(measurement);
 
-    // Optional: delete old measurements beyond latest 10
+    // Remove older measurements beyond latest 10
     db.ref("Measurements").once("value", snap => {
       const all = snap.val();
       if (!all) return;
