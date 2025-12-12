@@ -28,20 +28,17 @@ tr:hover { background: #f9f9f9; }
 
 <h1>📡 Heartbeat & SpO₂ Dashboard</h1>
 
-<!-- LIVE READINGS CARD -->
 <div class="card">
   <h2>Live Measurement</h2>
   <div>BPM: <span class="value" id="liveBPM">--</span></div>
   <div>SpO₂: <span class="value" id="liveSpO2">--</span></div>
 </div>
 
-<!-- LIVE GRAPH -->
 <h2>📈 Live Graph (Updates per Second)</h2>
 <div class="chart-container">
   <canvas id="liveChart"></canvas>
 </div>
 
-<!-- MEASUREMENT HISTORY TABLE -->
 <h2>📄 Measurement History (Latest 10)</h2>
 <table id="historyTable">
   <thead>
@@ -83,7 +80,7 @@ const liveChart = new Chart(liveCtx, {
   options: { responsive: true, scales: { x: { title: { display:true, text:"Time (HH:MM:SS)" }}, y:{ beginAtZero:false } } }
 });
 
-// Function to add a row to the table (prevents duplicates, keeps latest 10)
+// Function to add a row to the table (keeps latest 10 measurements)
 function addRow(date, time, bpm, spo2) {
   const key = `${date}_${time}_${bpm}_${spo2}`;
   if (savedMeasurements.has(key)) return; // skip duplicate
@@ -102,7 +99,7 @@ function addRow(date, time, bpm, spo2) {
   while (tableBody.rows.length > 10) {
     const lastRow = tableBody.rows[tableBody.rows.length - 1];
     const lastKey = `${lastRow.cells[0].innerText}_${lastRow.cells[1].innerText}_${lastRow.cells[2].innerText}_${lastRow.cells[3].innerText}`;
-    savedMeasurements.delete(lastKey); // remove from Set
+    savedMeasurements.delete(lastKey); // remove from set
     tableBody.removeChild(lastRow);
   }
 }
@@ -114,9 +111,9 @@ db.ref("Measurements").once("value", snapshot => {
   const data = snapshot.val();
   if (!data) return;
 
-  Object.values(data).forEach(item => {
-    addRow(item.date, item.time, item.BPM, item.SpO2);
-  });
+  // Sort latest first
+  const entries = Object.values(data).sort((a,b) => new Date(b.date + ' ' + b.time) - new Date(a.date + ' ' + a.time));
+  entries.forEach(item => addRow(item.date, item.time, item.BPM, item.SpO2));
 });
 
 /* -----------------------------------------
@@ -145,7 +142,7 @@ db.ref("Live").on("value", snapshot => {
   }
   liveChart.update();
 
-  // Add to table only if this measurement is new
+  // Add to table
   addRow(date, time, live.BPM, live.SpO2);
 
   // Save to Firebase Measurements
