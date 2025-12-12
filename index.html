@@ -42,7 +42,7 @@ tr:hover { background: #f9f9f9; }
 </div>
 
 <!-- MEASUREMENT HISTORY TABLE -->
-<h2>📄 Measurement History</h2>
+<h2>📄 Measurement History (Latest 10)</h2>
 <table id="historyTable">
   <thead>
     <tr><th>Date</th><th>Time</th><th>BPM</th><th>SpO₂ (%)</th></tr>
@@ -83,7 +83,7 @@ const liveChart = new Chart(liveCtx, {
   options: { responsive: true, scales: { x: { title: { display:true, text:"Time (HH:MM:SS)" }}, y:{ beginAtZero:false } } }
 });
 
-// Function to add a row to the table (prevents duplicates)
+// Function to add a row to the table (prevents duplicates, keeps latest 10)
 function addRow(date, time, bpm, spo2) {
   const key = `${date}_${time}_${bpm}_${spo2}`;
   if (savedMeasurements.has(key)) return; // skip duplicate
@@ -97,6 +97,14 @@ function addRow(date, time, bpm, spo2) {
       <td>${spo2}</td>
     </tr>`;
   tableBody.innerHTML = row + tableBody.innerHTML;
+
+  // Keep only the latest 10 rows
+  while (tableBody.rows.length > 10) {
+    const lastRow = tableBody.rows[tableBody.rows.length - 1];
+    const lastKey = `${lastRow.cells[0].innerText}_${lastRow.cells[1].innerText}_${lastRow.cells[2].innerText}_${lastRow.cells[3].innerText}`;
+    savedMeasurements.delete(lastKey); // remove from Set
+    tableBody.removeChild(lastRow);
+  }
 }
 
 /* -----------------------------------------
@@ -126,7 +134,7 @@ db.ref("Live").on("value", snapshot => {
   liveBPM.innerText = live.BPM || "--";
   liveSpO2.innerText = live.SpO2 || "--";
 
-  // Update graph
+  // Update live graph
   liveChart.data.labels.push(time);
   liveChart.data.datasets[0].data.push(live.BPM || 0);
   liveChart.data.datasets[1].data.push(live.SpO2 || 0);
