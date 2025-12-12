@@ -9,9 +9,15 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <style>
 body { background: #f5f7fa; color: #222; font-family: Arial, sans-serif; text-align: center; padding: 30px; }
 h1, h2 { color: #333; }
+.card { background: white; border-radius: 12px; padding: 20px; margin: 20px auto; max-width: 600px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+.value { font-size: 2rem; font-weight: bold; margin: 10px 0; }
+.chart-container { width: 95%; max-width: 1100px; margin: auto; background: white; border-radius: 12px; padding: 25px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
 table { width: 95%; max-width: 1100px; margin: 30px auto; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
 th, td { padding: 12px; border-bottom: 1px solid #e5e5e5; }
 th { background: #f0f0f0; font-size: 1rem; color: #333; }
@@ -20,9 +26,23 @@ tr:hover { background: #f9f9f9; }
 </head>
 <body>
 
-<h1>📄 Heartbeat & SpO₂ Measurement Table</h1>
+<h1>📡 Heartbeat & SpO₂ Dashboard</h1>
+
+<!-- LIVE READINGS CARD -->
+<div class="card">
+  <h2>Live Measurement</h2>
+  <div>BPM: <span class="value" id="liveBPM">--</span></div>
+  <div>SpO₂: <span class="value" id="liveSpO2">--</span></div>
+</div>
+
+<!-- LIVE GRAPH -->
+<h2>📈 Live Graph (Updates per Second)</h2>
+<div class="chart-container">
+  <canvas id="liveChart"></canvas>
+</div>
 
 <!-- LIVE MEASUREMENT TABLE -->
+<h2>📄 Live Measurement Table</h2>
 <table id="historyTable">
   <thead>
     <tr><th>Date</th><th>Time</th><th>BPM</th><th>SpO₂ (%)</th></tr>
@@ -44,35 +64,26 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
+
+const liveBPM = document.getElementById("liveBPM");
+const liveSpO2 = document.getElementById("liveSpO2");
 const tableBody = document.querySelector("#historyTable tbody");
 
-// Function to add a row to the table
-function addRow(measurement) {
-  const date = measurement.date || "--";
-  const time = measurement.time || "--";
-  const bpm = measurement.BPM || "--";
-  const spo2 = measurement.SpO2 || "--";
-  
-  const newRow = `<tr>
-    <td>${date}</td>
-    <td>${time}</td>
-    <td>${bpm}</td>
-    <td>${spo2}</td>
-  </tr>`;
-  tableBody.innerHTML = newRow + tableBody.innerHTML; // prepend latest first
-}
-
-// Load historical measurements from Firebase
-db.ref("Measurements").once("value", snapshot => {
-  const data = snapshot.val();
-  if (data) {
-    // Sort by timestamp (optional)
-    const sorted = Object.values(data).sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
-    sorted.forEach(measurement => addRow(measurement));
-  }
+// Live chart
+const liveCtx = document.getElementById("liveChart").getContext("2d");
+const liveChart = new Chart(liveCtx, {
+  type: 'line',
+  data: { labels: [], datasets: [
+    { label: "BPM", data: [], borderColor: "red", borderWidth: 2, tension: 0.3 },
+    { label: "SpO₂", data: [], borderColor: "blue", borderWidth: 2, tension: 0.3 }
+  ]},
+  options: { responsive: true, scales: { x: { title: { display:true, text:"Time (HH:MM:SS)" }}, y:{ beginAtZero:false } } }
 });
 
-// Listen for new live measurements
+// Track last added timestamp to prevent duplicates
+let lastTimestamp = "";
+
+// Listen for live measurements
 db.ref("Live").on("value", snapshot => {
   const live = snapshot.val();
   if (!live) return;
@@ -81,18 +92,35 @@ db.ref("Live").on("value", snapshot => {
   const t = now.toLocaleTimeString();
   const date = now.toLocaleDateString();
 
-  // Save live measurement to "Measurements" (persistent storage)
-  const newKey = db.ref("Measurements").push().key;
-  db.ref("Measurements/" + newKey).set({
-    BPM: live.BPM || "--",
-    SpO2: live.SpO2 || "--",
-    date: date,
-    time: t,
-    timestamp: now.getTime()
-  });
+  // Prevent duplicate row if timestamp is same
+  const currentTimestamp = date + " " + t;
+  if (currentTimestamp === lastTimestamp) return;
+  lastTimestamp = currentTimestamp;
 
-  // Add to table immediately
-  addRow({BPM: live.BPM, SpO2: live.SpO2, date: date, time: t});
+  // Update live readings card
+  liveBPM.innerText = live.BPM || "--";
+  liveSpO2.innerText = live.SpO2 || "--";
+
+  // Update live chart
+  liveChart.data.labels.push(t);
+  liveChart.data.datasets[0].data.push(live.BPM || 0);
+  liveChart.data.datasets[1].data.push(live.SpO2 || 0);
+
+  if (liveChart.data.labels.length > 20) {
+    liveChart.data.labels.shift();
+    liveChart.data.datasets[0].data.shift();
+    liveChart.data.datasets[1].data.shift();
+  }
+  liveChart.update();
+
+  // Prepend new measurement to table (latest on top)
+  const newRow = `<tr>
+    <td>${date}</td>
+    <td>${t}</td>
+    <td>${live.BPM || "--"}</td>
+    <td>${live.SpO2 || "--"}</td>
+  </tr>`;
+  tableBody.innerHTML = newRow + tableBody.innerHTML;
 });
 </script>
 </body>
