@@ -69,8 +69,8 @@ const liveBPM = document.getElementById("liveBPM");
 const liveSpO2 = document.getElementById("liveSpO2");
 const tableBody = document.querySelector("#historyTable tbody");
 
-// Track last saved measurement to prevent duplicates
-let lastSaved = { BPM: null, SpO2: null };
+// Track saved measurements to prevent duplicates
+let savedMeasurements = new Set();
 
 // LIVE GRAPH
 const liveCtx = document.getElementById("liveChart").getContext("2d");
@@ -83,8 +83,12 @@ const liveChart = new Chart(liveCtx, {
   options: { responsive: true, scales: { x: { title: { display:true, text:"Time (HH:MM:SS)" }}, y:{ beginAtZero:false } } }
 });
 
-/* FUNCTION TO ADD A ROW TO THE TABLE */
+// Function to add a row to the table (prevents duplicates)
 function addRow(date, time, bpm, spo2) {
+  const key = `${date}_${time}_${bpm}_${spo2}`;
+  if (savedMeasurements.has(key)) return; // skip duplicate
+  savedMeasurements.add(key);
+
   const row = `
     <tr>
       <td>${date}</td>
@@ -102,14 +106,8 @@ db.ref("Measurements").once("value", snapshot => {
   const data = snapshot.val();
   if (!data) return;
 
-  const entries = Object.values(data);
-
-  entries.forEach(item => {
-    // Only add to table if different from lastSaved
-    if (item.BPM !== lastSaved.BPM || item.SpO2 !== lastSaved.SpO2) {
-      lastSaved = { BPM: item.BPM, SpO2: item.SpO2 };
-      addRow(item.date, item.time, item.BPM, item.SpO2);
-    }
+  Object.values(data).forEach(item => {
+    addRow(item.date, item.time, item.BPM, item.SpO2);
   });
 });
 
@@ -128,7 +126,7 @@ db.ref("Live").on("value", snapshot => {
   liveBPM.innerText = live.BPM || "--";
   liveSpO2.innerText = live.SpO2 || "--";
 
-  // Update live graph
+  // Update graph
   liveChart.data.labels.push(time);
   liveChart.data.datasets[0].data.push(live.BPM || 0);
   liveChart.data.datasets[1].data.push(live.SpO2 || 0);
@@ -139,22 +137,17 @@ db.ref("Live").on("value", snapshot => {
   }
   liveChart.update();
 
-  // Only save/add if measurement is new/different
-  if (live.BPM !== lastSaved.BPM || live.SpO2 !== lastSaved.SpO2) {
-    lastSaved = { BPM: live.BPM, SpO2: live.SpO2 };
+  // Add to table only if this measurement is new
+  addRow(date, time, live.BPM, live.SpO2);
 
-    // Save to Firebase Measurements
-    const key = db.ref("Measurements").push().key;
-    db.ref("Measurements/" + key).set({
-      BPM: live.BPM,
-      SpO2: live.SpO2,
-      date: date,
-      time: time
-    });
-
-    // Add to table
-    addRow(date, time, live.BPM, live.SpO2);
-  }
+  // Save to Firebase Measurements
+  const key = db.ref("Measurements").push().key;
+  db.ref("Measurements/" + key).set({
+    BPM: live.BPM,
+    SpO2: live.SpO2,
+    date: date,
+    time: time
+  });
 });
 </script>
 </body>
