@@ -41,7 +41,7 @@ tr:hover { background: #f9f9f9; }
   <canvas id="liveChart"></canvas>
 </div>
 
-<!-- LIVE MEASUREMENT TABLE -->
+<!-- MEASUREMENT HISTORY TABLE -->
 <h2>📄 Measurement History</h2>
 <table id="historyTable">
   <thead>
@@ -69,7 +69,7 @@ const liveBPM = document.getElementById("liveBPM");
 const liveSpO2 = document.getElementById("liveSpO2");
 const tableBody = document.querySelector("#historyTable tbody");
 
-// Track last saved measurement to avoid duplicates
+// Track last saved measurement to prevent duplicates
 let lastSaved = { BPM: null, SpO2: null };
 
 // LIVE GRAPH
@@ -105,7 +105,7 @@ db.ref("Measurements").once("value", snapshot => {
   const entries = Object.values(data);
 
   entries.forEach(item => {
-    // Only add if different from lastSaved
+    // Only add to table if different from lastSaved
     if (item.BPM !== lastSaved.BPM || item.SpO2 !== lastSaved.SpO2) {
       lastSaved = { BPM: item.BPM, SpO2: item.SpO2 };
       addRow(item.date, item.time, item.BPM, item.SpO2);
@@ -128,11 +128,10 @@ db.ref("Live").on("value", snapshot => {
   liveBPM.innerText = live.BPM || "--";
   liveSpO2.innerText = live.SpO2 || "--";
 
-  // Update graph
+  // Update live graph
   liveChart.data.labels.push(time);
   liveChart.data.datasets[0].data.push(live.BPM || 0);
   liveChart.data.datasets[1].data.push(live.SpO2 || 0);
-
   if (liveChart.data.labels.length > 20) {
     liveChart.data.labels.shift();
     liveChart.data.datasets[0].data.shift();
@@ -140,10 +139,11 @@ db.ref("Live").on("value", snapshot => {
   }
   liveChart.update();
 
-  // Only save to Measurements and add to table if values changed
+  // Only save/add if measurement is new/different
   if (live.BPM !== lastSaved.BPM || live.SpO2 !== lastSaved.SpO2) {
     lastSaved = { BPM: live.BPM, SpO2: live.SpO2 };
 
+    // Save to Firebase Measurements
     const key = db.ref("Measurements").push().key;
     db.ref("Measurements/" + key).set({
       BPM: live.BPM,
@@ -152,10 +152,10 @@ db.ref("Live").on("value", snapshot => {
       time: time
     });
 
+    // Add to table
     addRow(date, time, live.BPM, live.SpO2);
   }
 });
 </script>
 </body>
 </html>
-
