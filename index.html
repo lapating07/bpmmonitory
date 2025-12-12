@@ -34,12 +34,12 @@ tr:hover { background: #f9f9f9; }
   <div>SpO₂: <span class="value" id="liveSpO2">--</span></div>
 </div>
 
-<h2>📈 Live Graph (Updates per Second)</h2>
+<h2>📈Graph</h2>
 <div class="chart-container">
   <canvas id="liveChart"></canvas>
 </div>
 
-<h2>📄 Measurement History (Latest 10)</h2>
+<h2>Record</h2>
 <table id="historyTable">
   <thead>
     <tr><th>Date</th><th>Time</th><th>BPM</th><th>SpO₂ (%)</th></tr>
@@ -157,3 +157,4 @@ db.ref("Live").on("value", snapshot => {
 </script>
 </body>
 </html>
+
