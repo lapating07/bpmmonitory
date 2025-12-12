@@ -29,7 +29,7 @@ tr:hover { background: #f9f9f9; }
 <h1>📡 Heartbeat & SpO₂ Dashboard</h1>
 
 <div class="card">
-  <h2>Result Measurement</h2>
+  <h2>Live Measurement</h2>
   <div>BPM: <span class="value" id="liveBPM">--</span></div>
   <div>SpO₂: <span class="value" id="liveSpO2">--</span></div>
 </div>
@@ -66,7 +66,7 @@ const liveBPM = document.getElementById("liveBPM");
 const liveSpO2 = document.getElementById("liveSpO2");
 const tableBody = document.querySelector("#historyTable tbody");
 
-// Graph setup
+// GRAPH FOR LIVE MEASUREMENT
 const ctx = document.getElementById("liveChart").getContext("2d");
 const liveChart = new Chart(ctx, {
   type: 'line',
@@ -86,53 +86,73 @@ const liveChart = new Chart(ctx, {
   }
 });
 
-// Store latest 10 measurements
-let measurements = [];
+// Keep track of last saved measurement
+let lastMeasurement = { BPM: null, SpO2: null };
 
-// Add measurement to graph and table
-function addMeasurement(measurement) {
+// Function to add measurement to table
+function addToTable(measurement) {
+  const row = `<tr>
+    <td>${measurement.date}</td>
+    <td>${measurement.time}</td>
+    <td>${measurement.BPM}</td>
+    <td>${measurement.SpO2}</td>
+  </tr>`;
+  tableBody.innerHTML = row + tableBody.innerHTML;
+
+  // Keep only latest 10
+  while (tableBody.rows.length > 10) tableBody.deleteRow(10);
+}
+
+// Listen for live measurement changes
+db.ref("Live").on("value", snapshot => {
+  const data = snapshot.val();
+  if (!data) return;
+
+  const now = new Date();
+  const measurement = {
+    BPM: data.BPM,
+    SpO2: data.SpO2,
+    date: now.toLocaleDateString(),
+    time: now.toLocaleTimeString()
+  };
+
+  // Update live card
   liveBPM.innerText = measurement.BPM;
   liveSpO2.innerText = measurement.SpO2;
 
-  measurements.unshift(measurement); // newest first
-  if (measurements.length > 10) measurements.pop();
+  // Only save and plot if measurement changed
+  if (measurement.BPM !== lastMeasurement.BPM || measurement.SpO2 !== lastMeasurement.SpO2) {
+    lastMeasurement = { BPM: measurement.BPM, SpO2: measurement.SpO2 };
 
-  // Update graph
-  liveChart.data.labels = measurements.map(m => m.time).reverse();
-  liveChart.data.datasets[0].data = measurements.map(m => m.BPM).reverse();
-  liveChart.data.datasets[1].data = measurements.map(m => m.SpO2).reverse();
-  liveChart.update();
+    // Add to graph
+    liveChart.data.labels.push(measurement.time);
+    liveChart.data.datasets[0].data.push(measurement.BPM);
+    liveChart.data.datasets[1].data.push(measurement.SpO2);
+    if (liveChart.data.labels.length > 10) {
+      liveChart.data.labels.shift();
+      liveChart.data.datasets[0].data.shift();
+      liveChart.data.datasets[1].data.shift();
+    }
+    liveChart.update();
 
-  // Update table
-  tableBody.innerHTML = measurements.map(m => `
-    <tr>
-      <td>${m.date}</td>
-      <td>${m.time}</td>
-      <td>${m.BPM}</td>
-      <td>${m.SpO2}</td>
-    </tr>`).join('');
-}
+    // Add to table
+    addToTable(measurement);
 
-// Listen for finalized measurement results
-db.ref("Result").on("child_added", snapshot => {
-  const measurement = snapshot.val();
-  if (!measurement) return;
+    // Save to Firebase Measurements
+    const key = db.ref("Measurements").push().key;
+    db.ref("Measurements/" + key).set(measurement);
 
-  addMeasurement(measurement);
-
-  // Save to Measurements node and keep latest 10
-  const key = db.ref("Measurements").push().key;
-  db.ref("Measurements/" + key).set(measurement);
-
-  db.ref("Measurements").once("value", snap => {
-    const all = snap.val();
-    if (!all) return;
-    const keys = Object.keys(all);
-    if (keys.length <= 10) return;
-    const sortedKeys = keys.sort((a,b) => new Date(all[b].date + ' ' + all[b].time) - new Date(all[a].date + ' ' + all[a].time));
-    const toDelete = sortedKeys.slice(10);
-    toDelete.forEach(k => db.ref("Measurements/" + k).remove());
-  });
+    // Remove older measurements beyond latest 10
+    db.ref("Measurements").once("value", snap => {
+      const all = snap.val();
+      if (!all) return;
+      const keys = Object.keys(all);
+      if (keys.length <= 10) return;
+      const sortedKeys = keys.sort((a,b) => new Date(all[b].date + ' ' + all[b].time) - new Date(all[a].date + ' ' + all[a].time));
+      const toDelete = sortedKeys.slice(10);
+      toDelete.forEach(k => db.ref("Measurements/" + k).remove());
+    });
+  }
 });
 </script>
 </body>
