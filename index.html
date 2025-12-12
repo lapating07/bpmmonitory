@@ -22,11 +22,17 @@ table { width: 95%; max-width: 1100px; margin: 30px auto; border-collapse: colla
 th, td { padding: 12px; border-bottom: 1px solid #e5e5e5; }
 th { background: #f0f0f0; font-size: 1rem; color: #333; }
 tr:hover { background: #f9f9f9; }
+
+.filter-box {
+  margin-top: 20px;
+  margin-bottom: 20px;
+}
 </style>
 </head>
 <body>
 
 <h1>📡 Heartbeat & SpO₂ Dashboard</h1>
+
 
 <!-- LIVE READINGS CARD -->
 <div class="card">
@@ -35,13 +41,23 @@ tr:hover { background: #f9f9f9; }
   <div>SpO₂: <span class="value" id="liveSpO2">--</span></div>
 </div>
 
+
 <!-- GRAPH -->
-<h2> Graph (Updates per Second)</h2>
+<h2>Graph (Updates per Second)</h2>
 <div class="chart-container">
   <canvas id="liveChart"></canvas>
 </div>
 
-<!-- LIVE MEASUREMENT TABLE -->
+
+<!-- FILTER SECTION -->
+<div class="filter-box">
+  <input type="date" id="dateFilter">
+  <button onclick="filterByDate()">Filter</button>
+  <button onclick="loadAllHistory()">Show All</button>
+</div>
+
+
+<!-- MEASUREMENT TABLE -->
 <h2>📄 Measurement Table</h2>
 <table id="historyTable">
   <thead>
@@ -69,30 +85,78 @@ const liveBPM = document.getElementById("liveBPM");
 const liveSpO2 = document.getElementById("liveSpO2");
 const tableBody = document.querySelector("#historyTable tbody");
 
-// LIVE GRAPH
+
+// =========================
+//       LIVE GRAPH
+// =========================
 const liveCtx = document.getElementById("liveChart").getContext("2d");
 const liveChart = new Chart(liveCtx, {
   type: 'line',
-  data: { labels: [], datasets: [
-    { label: "BPM", data: [], borderColor: "red", borderWidth: 2, tension: 0.3 },
-    { label: "SpO₂", data: [], borderColor: "blue", borderWidth: 2, tension: 0.3 }
-  ]},
-  options: { responsive: true, scales: { x: { title: { display:true, text:"Time (HH:MM:SS)" }}, y:{ beginAtZero:false } } }
+  data: { 
+    labels: [],
+    datasets: [
+      { label: "BPM", data: [], borderColor: "red", borderWidth: 2, tension: 0.3 },
+      { label: "SpO₂", data: [], borderColor: "blue", borderWidth: 2, tension: 0.3 }
+    ]
+  },
+  options: { 
+    responsive: true,
+    scales: { 
+      x: { title: { display:true, text:"Time (HH:MM:SS)" }},
+      y: { beginAtZero:false }
+    }
+  }
 });
 
-/* -----------------------------------------
-   LOAD SAVED MEASUREMENTS ON PAGE OPEN
-------------------------------------------- */
-db.ref("Measurements").once("value", snapshot => {
-  const data = snapshot.val();
-  if (!data) return;
 
-  Object.values(data).forEach(item => {
-    addRow(item.date, item.time, item.BPM, item.SpO2);
+// ===============================
+//   LOAD ALL SAVED MEASUREMENTS
+// ===============================
+function loadAllHistory() {
+  tableBody.innerHTML = "";
+  
+  db.ref("Measurements").once("value", snapshot => {
+    snapshot.forEach(child => {
+      const item = child.val();
+      addRow(item.date, item.time, item.BPM, item.SpO2);
+    });
   });
-});
+}
 
-/* FUNCTION TO ADD A ROW TO THE TABLE */
+
+// ===============================
+//   DATE FILTER FUNCTION
+// ===============================
+function filterByDate() {
+  const selected = document.getElementById("dateFilter").value;
+  if (!selected) {
+    alert("Please select a date");
+    return;
+  }
+
+  tableBody.innerHTML = "";
+
+  db.ref("Measurements")
+    .orderByChild("date")
+    .equalTo(selected)
+    .once("value", snapshot => {
+
+      if (!snapshot.exists()) {
+        tableBody.innerHTML = `<tr><td colspan="4">No measurements found for this date.</td></tr>`;
+        return;
+      }
+
+      snapshot.forEach(child => {
+        const item = child.val();
+        addRow(item.date, item.time, item.BPM, item.SpO2);
+      });
+    });
+}
+
+
+// ===============================
+//     TABLE ROW BUILDER
+// ===============================
 function addRow(date, time, bpm, spo2) {
   const row = `
     <tr>
@@ -104,22 +168,22 @@ function addRow(date, time, bpm, spo2) {
   tableBody.innerHTML = row + tableBody.innerHTML;
 }
 
-/* -----------------------------------------
-   LIVE UPDATE LISTENER
-------------------------------------------- */
+
+// ===============================
+//       LIVE UPDATE LISTENER
+// ===============================
 db.ref("Live").on("value", snapshot => {
   const live = snapshot.val();
   if (!live) return;
 
   const now = new Date();
   const time = now.toLocaleTimeString();
-  const date = now.toLocaleDateString();
+  const date = now.toLocaleDateString("en-CA"); // YYYY-MM-DD
 
-  // Update live card
   liveBPM.innerText = live.BPM || "--";
   liveSpO2.innerText = live.SpO2 || "--";
 
-  // Update graph
+  // UPDATE GRAPH
   liveChart.data.labels.push(time);
   liveChart.data.datasets[0].data.push(live.BPM || 0);
   liveChart.data.datasets[1].data.push(live.SpO2 || 0);
@@ -131,7 +195,7 @@ db.ref("Live").on("value", snapshot => {
   }
   liveChart.update();
 
-  // Save live measurement permanently
+  // SAVE TO MEASUREMENTS (Real data only)
   const key = db.ref("Measurements").push().key;
   db.ref("Measurements/" + key).set({
     BPM: live.BPM,
@@ -140,9 +204,12 @@ db.ref("Live").on("value", snapshot => {
     time: time
   });
 
-  // Add to table
   addRow(date, time, live.BPM, live.SpO2);
 });
+
+// Load all data on first open
+loadAllHistory();
 </script>
+
 </body>
 </html>
