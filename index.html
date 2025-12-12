@@ -196,7 +196,16 @@ db.ref("Live").on("value", snapshot => {
   liveChart.update();
 
   // SAVE TO MEASUREMENTS (Real data only)
+// SAVE ONLY REAL MEASUREMENTS — ignore fake 100/100
+if (
+  live.BPM !== null &&
+  live.SpO2 !== null &&
+  live.BPM !== "" &&
+  live.SpO2 !== "" &&
+  !(live.BPM == 100 && live.SpO2 == 100)
+) {
   const key = db.ref("Measurements").push().key;
+
   db.ref("Measurements/" + key).set({
     BPM: live.BPM,
     SpO2: live.SpO2,
@@ -205,7 +214,8 @@ db.ref("Live").on("value", snapshot => {
   });
 
   addRow(date, time, live.BPM, live.SpO2);
-});
+}
+
 
 // Load all data on first open
 loadAllHistory();
@@ -213,3 +223,4 @@ loadAllHistory();
 
 </body>
 </html>
+
