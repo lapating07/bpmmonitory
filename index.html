@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Heartbeat & SpO₂ Dashboard</title>
+<title>Heart Rate & Blood Oxygen Dashboard</title>
 
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -13,36 +13,58 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body { background: #f5f7fa; color: #222; font-family: Arial, sans-serif; text-align: center; padding: 30px; }
+body { background: #f5f7fa; font-family: Arial, sans-serif; text-align: center; padding: 30px; }
 h1, h2 { color: #333; }
-.card { background: white; border-radius: 12px; padding: 20px; margin: 20px auto; max-width: 600px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
-.value { font-size: 2rem; font-weight: bold; margin: 10px 0; }
-.chart-container { width: 95%; max-width: 1100px; margin: auto; background: white; border-radius: 12px; padding: 25px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
-table { width: 95%; max-width: 1100px; margin: 30px auto; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
-th, td { padding: 12px; border-bottom: 1px solid #e5e5e5; }
-th { background: #f0f0f0; font-size: 1rem; color: #333; }
+.card { background: #fff; border-radius: 12px; padding: 20px; margin: 20px auto; max-width: 650px; box-shadow: 0 5px 15px rgba(0,0,0,.1); }
+.value { font-size: 2rem; font-weight: bold; }
+.status { font-weight: bold; margin-left: 8px; }
+.low { color: #e74c3c; }
+.normal { color: #27ae60; }
+.high { color: #f39c12; }
+
+.chart-container { background: #fff; padding: 25px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,.1); max-width: 1100px; margin: auto; }
+
+table { width: 95%; max-width: 1100px; margin: 30px auto; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 5px 15px rgba(0,0,0,.1); }
+th, td { padding: 12px; border-bottom: 1px solid #eee; }
+th { background: #f0f0f0; }
 tr:hover { background: #f9f9f9; }
 </style>
 </head>
 <body>
 
-<h1>📡 Heartbeat & SpO₂ Dashboard</h1>
+<h1>📡 Heart Rate & Blood Oxygen Saturation Dashboard</h1>
 
+<!-- LIVE CARD -->
 <div class="card">
-  <h2>Live Measurement</h2>
-  <div>BPM: <span class="value" id="liveBPM">--</span></div>
-  <div>SpO₂: <span class="value" id="liveSpO2">--</span></div>
+  <h2>Live Result</h2>
+  <div>
+    BPM: <span class="value" id="liveBPM">--</span>
+    <span id="bpmStatus" class="status"></span>
+  </div>
+  <div>
+    SpO₂: <span class="value" id="liveSpO2">--</span>
+    <span id="spo2Status" class="status"></span>
+  </div>
 </div>
 
-<h2>📈 Measurement Graph (Latest 10)</h2>
+<!-- GRAPH -->
+<h2>📈 Graph (Latest 10 Records)</h2>
 <div class="chart-container">
   <canvas id="liveChart"></canvas>
 </div>
 
-<h2>📄 Measurement Table (Latest 10)</h2>
+<!-- TABLE -->
+<h2>📄 Record Table (Latest 10)</h2>
 <table id="historyTable">
   <thead>
-    <tr><th>Date</th><th>Time</th><th>BPM</th><th>SpO₂ (%)</th></tr>
+    <tr>
+      <th>Date</th>
+      <th>Time</th>
+      <th>BPM</th>
+      <th>BPM Status</th>
+      <th>SpO₂</th>
+      <th>SpO₂ Status</th>
+    </tr>
   </thead>
   <tbody></tbody>
 </table>
@@ -55,8 +77,7 @@ const firebaseConfig = {
   projectId: "dpmspo2",
   storageBucket: "dpmspo2.firebasestorage.app",
   messagingSenderId: "86512121446",
-  appId: "1:86512121446:web:0bad04d8fa786db26f9fa7",
-  measurementId: "G-GPDRFV8426"
+  appId: "1:86512121446:web:0bad04d8fa786db26f9fa7"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -64,70 +85,78 @@ const db = firebase.database();
 
 const liveBPM = document.getElementById("liveBPM");
 const liveSpO2 = document.getElementById("liveSpO2");
+const bpmStatusEl = document.getElementById("bpmStatus");
+const spo2StatusEl = document.getElementById("spo2Status");
 const tableBody = document.querySelector("#historyTable tbody");
 
-// GRAPH FOR LIVE MEASUREMENT
+/* ===== STATUS FUNCTIONS ===== */
+function bpmStatus(bpm) {
+  if (bpm < 60) return ["Low", "low"];
+  if (bpm <= 100) return ["Normal", "normal"];
+  return ["High", "high"];
+}
+
+function spo2Status(spo2) {
+  if (spo2 < 95) return ["Low", "low"];
+  if (spo2 <= 100) return ["Normal", "normal"];
+  return ["High", "high"];
+}
+
+/* ===== CHART ===== */
 const ctx = document.getElementById("liveChart").getContext("2d");
 const liveChart = new Chart(ctx, {
-  type: 'line',
+  type: "line",
   data: {
     labels: [],
     datasets: [
-      { label: 'BPM', data: [], borderColor: 'red', borderWidth: 2, tension: 0.3 },
-      { label: 'SpO₂', data: [], borderColor: 'blue', borderWidth: 2, tension: 0.3 }
+      { label: "BPM", data: [], borderWidth: 2 },
+      { label: "SpO₂", data: [], borderWidth: 2 }
     ]
-  },
-  options: {
-    responsive: true,
-    scales: {
-      x: { title: { display: true, text: 'Time (HH:MM:SS)' } },
-      y: { beginAtZero: false }
-    }
   }
 });
 
-// Keep track of last saved measurement
-let lastMeasurement = { BPM: null, SpO2: null };
+/* ===== LAST RECORD ===== */
+let lastRecord = { BPM: null, SpO2: null };
 
-// Function to add measurement to table
-function addToTable(measurement) {
-  const row = `<tr>
-    <td>${measurement.date}</td>
-    <td>${measurement.time}</td>
-    <td>${measurement.BPM}</td>
-    <td>${measurement.SpO2}</td>
+/* ===== TABLE ===== */
+function addRow(r) {
+  const row = `
+  <tr>
+    <td>${r.date}</td>
+    <td>${r.time}</td>
+    <td>${r.BPM}</td>
+    <td class="${r.bpmClass}">${r.bpmStatus}</td>
+    <td>${r.SpO2}</td>
+    <td class="${r.spo2Class}">${r.spo2Status}</td>
   </tr>`;
   tableBody.innerHTML = row + tableBody.innerHTML;
-
-  // Keep only latest 10
   while (tableBody.rows.length > 10) tableBody.deleteRow(10);
 }
 
-// Listen for live measurement changes
+/* ===== LIVE LISTENER ===== */
 db.ref("Live").on("value", snapshot => {
-  const data = snapshot.val();
-  if (!data) return;
+  const d = snapshot.val();
+  if (!d || d.BPM == 100 && d.SpO2 == 100) return;
 
   const now = new Date();
-  const measurement = {
-    BPM: data.BPM,
-    SpO2: data.SpO2,
-    date: now.toLocaleDateString(),
-    time: now.toLocaleTimeString()
-  };
+  const [bpmText, bpmClass] = bpmStatus(d.BPM);
+  const [spo2Text, spo2Class] = spo2Status(d.SpO2);
 
-  // Update live card
-  liveBPM.innerText = measurement.BPM;
-  liveSpO2.innerText = measurement.SpO2;
+  liveBPM.innerText = d.BPM;
+  liveSpO2.innerText = d.SpO2;
 
-  // Only save and plot if measurement changed
-  if (measurement.BPM !== lastMeasurement.BPM || measurement.SpO2 !== lastMeasurement.SpO2) {
-    lastMeasurement = { BPM: measurement.BPM, SpO2: measurement.SpO2 };
+  bpmStatusEl.innerText = `(${bpmText})`;
+  bpmStatusEl.className = `status ${bpmClass}`;
 
-    // Add to graph
-    liveChart.data.labels.push(measurement.time);
-    liveChart.data.datasets[0].data.push(measurement.BPM);
-    liveChart.data.datasets[1].data.push(measurement.SpO2);
+  spo2StatusEl.innerText = `(${spo2Text})`;
+  spo2StatusEl.className = `status ${spo2Class}`;
+
+  if (d.BPM !== lastRecord.BPM || d.SpO2 !== lastRecord.SpO2) {
+    lastRecord = { BPM: d.BPM, SpO2: d.SpO2 };
+
+    liveChart.data.labels.push(now.toLocaleTimeString());
+    liveChart.data.datasets[0].data.push(d.BPM);
+    liveChart.data.datasets[1].data.push(d.SpO2);
     if (liveChart.data.labels.length > 10) {
       liveChart.data.labels.shift();
       liveChart.data.datasets[0].data.shift();
@@ -135,26 +164,22 @@ db.ref("Live").on("value", snapshot => {
     }
     liveChart.update();
 
-    // Add to table
-    addToTable(measurement);
+    const record = {
+      BPM: d.BPM,
+      SpO2: d.SpO2,
+      bpmStatus: bpmText,
+      spo2Status: spo2Text,
+      bpmClass,
+      spo2Class,
+      date: now.toLocaleDateString("en-CA"),
+      time: now.toLocaleTimeString()
+    };
 
-    // Save to Firebase Measurements
-    const key = db.ref("Measurements").push().key;
-    db.ref("Measurements/" + key).set(measurement);
-
-    // Remove older measurements beyond latest 10
-    db.ref("Measurements").once("value", snap => {
-      const all = snap.val();
-      if (!all) return;
-      const keys = Object.keys(all);
-      if (keys.length <= 10) return;
-      const sortedKeys = keys.sort((a,b) => new Date(all[b].date + ' ' + all[b].time) - new Date(all[a].date + ' ' + all[a].time));
-      const toDelete = sortedKeys.slice(10);
-      toDelete.forEach(k => db.ref("Measurements/" + k).remove());
-    });
+    db.ref("Records").push(record);
+    addRow(record);
   }
 });
 </script>
+
 </body>
 </html>
-
