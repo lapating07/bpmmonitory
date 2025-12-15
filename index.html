@@ -70,18 +70,6 @@ table {
 
 th, td { padding: 12px; border-bottom: 1px solid #eee; }
 th { background: #f0f0f0; }
-
-/* Scrollable table for 10 records */
-tbody {
-  display: block;
-  max-height: 400px;
-  overflow-y: auto;
-}
-thead, tbody tr {
-  display: table;
-  width: 100%;
-  table-layout: fixed;
-}
 </style>
 </head>
 <body>
@@ -139,11 +127,18 @@ function spo2Status(v){ return v < 95 ? ["Low","low"] : ["Normal","normal"]; }
 /* CHART */
 const chart = new Chart(document.getElementById("liveChart"),{
   type:"line",
-  data:{labels:[],datasets:[
-    {label:"BPM",data:[],borderColor:"#e74c3c",fill:false},
-    {label:"SpO₂",data:[],borderColor:"#27ae60",fill:false}
-  ]},
-  options:{animation:false,responsive:true,scales:{x:{title:{display:true,text:"Time"}},y:{beginAtZero:true}}}
+  data:{
+    labels:[],
+    datasets:[
+      {label:"BPM",data:[],borderColor:"#e74c3c",fill:false,tension:0.3},
+      {label:"SpO₂",data:[],borderColor:"#27ae60",fill:false,tension:0.3}
+    ]
+  },
+  options:{
+    animation:false,
+    responsive:true,
+    scales:{x:{title:{display:true,text:"Time"}},y:{beginAtZero:true}}
+  }
 });
 
 /* TRACK LAST SAVED */
@@ -156,7 +151,6 @@ db.ref("Records").orderByKey().limitToLast(10).once("value", snap=>{
     const r = child.val();
     recordList.push(r);
   });
-  // Ensure newest first
   recordList.reverse();
   renderTable();
 });
@@ -190,9 +184,9 @@ db.ref("Live").on("value", snap=>{
   const [bpmText,bpmClass] = bpmStatus(d.BPM);
   const [spo2Text,spo2Class] = spo2Status(d.SpO2);
 
+  // LIVE DISPLAY
   liveBPM.innerText = d.BPM;
   liveSpO2.innerText = d.SpO2;
-
   bpmStatusEl.innerText = `(${bpmText})`;
   bpmStatusEl.className = bpmClass;
   spo2StatusEl.innerText = `(${spo2Text})`;
@@ -203,7 +197,7 @@ db.ref("Live").on("value", snap=>{
     ? "✅ Normal Reading"
     : `⚠️ BPM ${bpmText} | SpO₂ ${spo2Text}`;
 
-  // SAVE ONLY IF CHANGED
+  // SAVE AND UPDATE TABLE & CHART ONLY IF CHANGED
   if(d.BPM !== lastSaved.BPM || d.SpO2 !== lastSaved.SpO2){
     const now = new Date();
     const record = {
@@ -214,13 +208,13 @@ db.ref("Live").on("value", snap=>{
     };
     db.ref("Records").push(record);
 
-    // UPDATE local list
+    // Update table
     recordList.unshift(record);
     if(recordList.length > 10) recordList.pop();
     renderTable();
 
-    // UPDATE CHART
-    const timeLabel = `${record.time}`;
+    // Update chart live
+    const timeLabel = record.time;
     chart.data.labels.push(timeLabel);
     chart.data.datasets[0].data.push(record.BPM);
     chart.data.datasets[1].data.push(record.SpO2);
@@ -237,4 +231,3 @@ db.ref("Live").on("value", snap=>{
 </script>
 </body>
 </html>
-
