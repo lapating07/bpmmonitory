@@ -70,6 +70,18 @@ table {
 
 th, td { padding: 12px; border-bottom: 1px solid #eee; }
 th { background: #f0f0f0; }
+
+/* Optional: Scrollable table */
+tbody {
+  display: block;
+  max-height: 400px;
+  overflow-y: auto;
+}
+thead, tbody tr {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
 </style>
 </head>
 <body>
@@ -120,7 +132,7 @@ const spo2StatusEl = document.getElementById("spo2Status");
 const tableBody = document.getElementById("historyTable");
 const alertBar = document.getElementById("alertBar");
 
-/* STATUS */
+/* STATUS FUNCTIONS */
 function bpmStatus(v){ return v < 60 ? ["Low","low"] : v <= 100 ? ["Normal","normal"] : ["High","high"]; }
 function spo2Status(v){ return v < 95 ? ["Low","low"] : ["Normal","normal"]; }
 
@@ -128,21 +140,37 @@ function spo2Status(v){ return v < 95 ? ["Low","low"] : ["Normal","normal"]; }
 const chart = new Chart(document.getElementById("liveChart"),{
   type:"line",
   data:{labels:[],datasets:[
-    {label:"BPM",data:[]},
-    {label:"SpO₂",data:[]}
-  ]}
+    {label:"BPM",data:[],borderColor:"#e74c3c",fill:false},
+    {label:"SpO₂",data:[],borderColor:"#27ae60",fill:false}
+  ]},
+  options:{animation:false,responsive:true,scales:{x:{title:{display:true,text:"Time"}},y:{beginAtZero:true}}}
 });
 
-/* 🔐 SAVE LOCK */
-let measurementSaved = false;
+/* LAST SAVED MEASUREMENT */
+let lastSaved = { BPM: null, SpO2: null };
 
+/* REAL-TIME TABLE AUTO-UPDATE */
+db.ref("Records").on("child_added", snap=>{
+  const r = snap.val();
+  tableBody.innerHTML = `
+    <tr>
+      <td>${r.date}</td>
+      <td>${r.time}</td>
+      <td>${r.BPM}</td>
+      <td>${r.bpmStatus}</td>
+      <td>${r.SpO2}</td>
+      <td>${r.spo2Status}</td>
+    </tr>` + tableBody.innerHTML;
+});
+
+/* LIVE MEASUREMENT */
 db.ref("Live").on("value", snap=>{
   const d = snap.val();
   if(!d || !d.BPM || !d.SpO2) return;
 
   // RESET LOCK kapag idle / bagong measurement
   if(d.BPM === 0 || d.SpO2 === 0){
-    measurementSaved = false;
+    lastSaved = { BPM: null, SpO2: null };
     return;
   }
 
@@ -157,34 +185,36 @@ db.ref("Live").on("value", snap=>{
   spo2StatusEl.innerText = `(${spo2Text})`;
   spo2StatusEl.className = spo2Class;
 
-  alertBar.className = bpmText==="Normal"&&spo2Text==="Normal" ? "alert normal":"alert warning";
-  alertBar.innerText = bpmText==="Normal"&&spo2Text==="Normal"
+  alertBar.className = bpmText==="Normal" && spo2Text==="Normal" ? "alert normal" : "alert warning";
+  alertBar.innerText = bpmText==="Normal" && spo2Text==="Normal"
     ? "✅ Normal Reading"
     : `⚠️ BPM ${bpmText} | SpO₂ ${spo2Text}`;
 
-  /* ✅ SAVE ONLY ONCE */
-  if(measurementSaved) return;
-  measurementSaved = true;
+  /* SAVE NEW MEASUREMENT ONLY IF CHANGED */
+  if(d.BPM !== lastSaved.BPM || d.SpO2 !== lastSaved.SpO2){
+    const now = new Date();
+    const record = {
+      BPM:d.BPM, SpO2:d.SpO2,
+      bpmStatus:bpmText, spo2Status:spo2Text,
+      date:now.toLocaleDateString("en-CA"),
+      time:now.toLocaleTimeString()
+    };
+    db.ref("Records").push(record);
 
-  const now = new Date();
-  const record = {
-    BPM:d.BPM, SpO2:d.SpO2,
-    bpmStatus:bpmText, spo2Status:spo2Text,
-    date:now.toLocaleDateString("en-CA"),
-    time:now.toLocaleTimeString()
-  };
+    // UPDATE CHART
+    const timeLabel = `${record.time}`;
+    chart.data.labels.push(timeLabel);
+    chart.data.datasets[0].data.push(record.BPM);
+    chart.data.datasets[1].data.push(record.SpO2);
+    if(chart.data.labels.length > 20) {
+      chart.data.labels.shift();
+      chart.data.datasets[0].data.shift();
+      chart.data.datasets[1].data.shift();
+    }
+    chart.update();
 
-  db.ref("Records").push(record);
-
-  tableBody.innerHTML = `
-    <tr>
-      <td>${record.date}</td>
-      <td>${record.time}</td>
-      <td>${record.BPM}</td>
-      <td>${record.bpmStatus}</td>
-      <td>${record.SpO2}</td>
-      <td>${record.spo2Status}</td>
-    </tr>` + tableBody.innerHTML;
+    lastSaved = { BPM:d.BPM, SpO2:d.SpO2 };
+  }
 });
 </script>
 </body>
