@@ -20,7 +20,6 @@ body {
   padding: 30px;
   padding-top: 80px;
 }
-
 .card {
   background: #fff;
   border-radius: 12px;
@@ -29,14 +28,11 @@ body {
   max-width: 650px;
   box-shadow: 0 5px 15px rgba(0,0,0,.1);
 }
-
 .value { font-size: 2rem; font-weight: bold; }
 .status { font-weight: bold; margin-left: 8px; }
-
 .low { color: #e74c3c; }
 .normal { color: #27ae60; }
 .high { color: #f39c12; }
-
 .alert {
   position: fixed;
   top: 0;
@@ -47,10 +43,8 @@ body {
   z-index: 9999;
   text-align: center;
 }
-
 .alert.normal { background: #2ecc71; color: #fff; }
 .alert.warning { background: #e74c3c; color: #fff; }
-
 .chart-container {
   background: #fff;
   padding: 25px;
@@ -58,7 +52,6 @@ body {
   max-width: 1100px;
   margin: auto;
 }
-
 table {
   width: 95%;
   max-width: 1100px;
@@ -67,7 +60,6 @@ table {
   background: #fff;
   border-radius: 12px;
 }
-
 th, td { padding: 12px; border-bottom: 1px solid #eee; }
 th { background: #f0f0f0; }
 </style>
@@ -120,7 +112,7 @@ const spo2StatusEl = document.getElementById("spo2Status");
 const tableBody = document.getElementById("historyTable");
 const alertBar = document.getElementById("alertBar");
 
-/* STATUS FUNCTIONS */
+/* STATUS */
 function bpmStatus(v){ return v < 60 ? ["Low","low"] : v <= 100 ? ["Normal","normal"] : ["High","high"]; }
 function spo2Status(v){ return v < 95 ? ["Low","low"] : ["Normal","normal"]; }
 
@@ -128,32 +120,33 @@ function spo2Status(v){ return v < 95 ? ["Low","low"] : ["Normal","normal"]; }
 const chart = new Chart(document.getElementById("liveChart"),{
   type:"line",
   data:{
-    labels:[],
+    labels: [],
     datasets:[
-      {label:"BPM",data:[],borderColor:"#e74c3c",fill:false,tension:0.3},
-      {label:"SpO₂",data:[],borderColor:"#27ae60",fill:false,tension:0.3}
+      {label:"BPM", data: [], borderColor:"#f39c12", fill:false},
+      {label:"SpO₂", data: [], borderColor:"#27ae60", fill:false}
     ]
   },
   options:{
-    animation:false,
     responsive:true,
-    scales:{x:{title:{display:true,text:"Time"}},y:{beginAtZero:true}}
+    animation:false,
+    scales: { y: { beginAtZero:true } }
   }
 });
 
-/* TRACK LAST SAVED */
-let lastSaved = { BPM: null, SpO2: null };
-let recordList = []; // To hold last 10 records
+/* RECORD LIST */
+let recordList = [];
 
-/* LOAD EXISTING RECORDS */
-db.ref("Records").orderByKey().limitToLast(10).once("value", snap=>{
-  snap.forEach(child=>{
-    const r = child.val();
-    recordList.push(r);
+/* LOAD LAST 10 RECORDS */
+function loadRecords(){
+  db.ref("Records").orderByKey().limitToLast(10).once("value", snap=>{
+    recordList = [];
+    snap.forEach(child=>{
+      recordList.push(child.val());
+    });
+    recordList.reverse();
+    renderTable();
   });
-  recordList.reverse();
-  renderTable();
-});
+}
 
 /* RENDER TABLE */
 function renderTable(){
@@ -171,20 +164,23 @@ function renderTable(){
   });
 }
 
+/* 🔐 SAVE LOCK */
+let measurementSaved = false;
+
 /* LIVE MEASUREMENT */
 db.ref("Live").on("value", snap=>{
   const d = snap.val();
   if(!d || !d.BPM || !d.SpO2) return;
 
+  // RESET LOCK kapag idle / bagong measurement
   if(d.BPM === 0 || d.SpO2 === 0){
-    lastSaved = { BPM: null, SpO2: null };
+    measurementSaved = false;
     return;
   }
 
   const [bpmText,bpmClass] = bpmStatus(d.BPM);
   const [spo2Text,spo2Class] = spo2Status(d.SpO2);
 
-  // LIVE DISPLAY
   liveBPM.innerText = d.BPM;
   liveSpO2.innerText = d.SpO2;
   bpmStatusEl.innerText = `(${bpmText})`;
@@ -192,42 +188,43 @@ db.ref("Live").on("value", snap=>{
   spo2StatusEl.innerText = `(${spo2Text})`;
   spo2StatusEl.className = spo2Class;
 
-  alertBar.className = bpmText==="Normal" && spo2Text==="Normal" ? "alert normal" : "alert warning";
-  alertBar.innerText = bpmText==="Normal" && spo2Text==="Normal"
+  alertBar.className = bpmText==="Normal"&&spo2Text==="Normal" ? "alert normal":"alert warning";
+  alertBar.innerText = bpmText==="Normal"&&spo2Text==="Normal"
     ? "✅ Normal Reading"
     : `⚠️ BPM ${bpmText} | SpO₂ ${spo2Text}`;
 
-  // SAVE AND UPDATE TABLE & CHART ONLY IF CHANGED
-  if(d.BPM !== lastSaved.BPM || d.SpO2 !== lastSaved.SpO2){
-    const now = new Date();
+  // ADD TO CHART
+  const now = new Date();
+  const timeLabel = now.toLocaleTimeString();
+  chart.data.labels.push(timeLabel);
+  chart.data.datasets[0].data.push(d.BPM);
+  chart.data.datasets[1].data.push(d.SpO2);
+  if(chart.data.labels.length>10){ // keep only last 10 points
+    chart.data.labels.shift();
+    chart.data.datasets[0].data.shift();
+    chart.data.datasets[1].data.shift();
+  }
+  chart.update();
+
+  // SAVE ONLY ONCE
+  if(!measurementSaved){
+    measurementSaved = true;
     const record = {
-      BPM:d.BPM, SpO2:d.SpO2,
-      bpmStatus:bpmText, spo2Status:spo2Text,
-      date:now.toLocaleDateString("en-CA"),
-      time:now.toLocaleTimeString()
+      BPM:d.BPM,
+      SpO2:d.SpO2,
+      bpmStatus:bpmText,
+      spo2Status:spo2Text,
+      date: now.toLocaleDateString("en-CA"),
+      time: now.toLocaleTimeString()
     };
-    db.ref("Records").push(record);
-
-    // Update table
-    recordList.unshift(record);
-    if(recordList.length > 10) recordList.pop();
-    renderTable();
-
-    // Update chart live
-    const timeLabel = record.time;
-    chart.data.labels.push(timeLabel);
-    chart.data.datasets[0].data.push(record.BPM);
-    chart.data.datasets[1].data.push(record.SpO2);
-    if(chart.data.labels.length > 20){
-      chart.data.labels.shift();
-      chart.data.datasets[0].data.shift();
-      chart.data.datasets[1].data.shift();
-    }
-    chart.update();
-
-    lastSaved = { BPM: d.BPM, SpO2: d.SpO2 };
+    db.ref("Records").push(record, ()=>{
+      loadRecords(); // reload last 10
+    });
   }
 });
+
+/* INITIAL LOAD */
+loadRecords();
 </script>
 </body>
 </html>
