@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Heart Rate & Blood Oxygen Records</title>
+<title>Heart Rate & Blood Oxygen Dashboard</title>
 
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -18,14 +18,47 @@ body {
   font-family: Arial, sans-serif;
   text-align: center;
   padding: 30px;
+  padding-top: 80px;
 }
+
+.card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  margin: 20px auto;
+  max-width: 650px;
+  box-shadow: 0 5px 15px rgba(0,0,0,.1);
+}
+
+.value { font-size: 2rem; font-weight: bold; }
+.status { font-weight: bold; margin-left: 8px; }
+
+.low { color: #e74c3c; }
+.normal { color: #27ae60; }
+.high { color: #f39c12; }
+
+.alert {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  padding: 14px;
+  font-weight: bold;
+  z-index: 9999;
+  text-align: center;
+}
+
+.alert.normal { background: #2ecc71; color: #fff; }
+.alert.warning { background: #e74c3c; color: #fff; }
+
 .chart-container {
   background: #fff;
   padding: 25px;
   border-radius: 12px;
   max-width: 1100px;
-  margin: 30px auto;
+  margin: auto;
 }
+
 table {
   width: 95%;
   max-width: 1100px;
@@ -34,30 +67,33 @@ table {
   background: #fff;
   border-radius: 12px;
 }
+
 th, td { padding: 12px; border-bottom: 1px solid #eee; }
 th { background: #f0f0f0; }
-tr.latest { background-color: #dff0d8; font-weight: bold; }
 </style>
 </head>
 <body>
 
-<h1>Heart Rate & Blood Oxygen Records</h1>
+<div id="alertBar" class="alert normal">Waiting for measurement...</div>
+
+<h1>Heart Rate & Blood Oxygen Saturation</h1>
+
+<div class="card">
+  <h2>Live Result</h2>
+  <div>BPM: <span class="value" id="liveBPM">--</span> <span id="bpmStatus"></span></div>
+  <div>SpO₂: <span class="value" id="liveSpO2">--</span> <span id="spo2Status"></span></div>
+</div>
 
 <h2>Graph</h2>
 <div class="chart-container">
-  <canvas id="recordsChart"></canvas>
+  <canvas id="liveChart"></canvas>
 </div>
 
-<h2>Record Table</h2>
+<h2>Record Table (Last 10 Records)</h2>
 <table>
   <thead>
     <tr>
-      <th>Date</th>
-      <th>Time</th>
-      <th>BPM</th>
-      <th>BPM Status</th>
-      <th>SpO₂</th>
-      <th>SpO₂ Status</th>
+      <th>Date</th><th>Time</th><th>BPM</th><th>Status</th><th>SpO₂</th><th>Status</th>
     </tr>
   </thead>
   <tbody id="historyTable"></tbody>
@@ -76,57 +112,122 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
+
+const liveBPM = document.getElementById("liveBPM");
+const liveSpO2 = document.getElementById("liveSpO2");
+const bpmStatusEl = document.getElementById("bpmStatus");
+const spo2StatusEl = document.getElementById("spo2Status");
 const tableBody = document.getElementById("historyTable");
+const alertBar = document.getElementById("alertBar");
+
+/* STATUS FUNCTIONS */
+function bpmStatus(v){ return v < 60 ? ["Low","low"] : v <= 100 ? ["Normal","normal"] : ["High","high"]; }
+function spo2Status(v){ return v < 95 ? ["Low","low"] : ["Normal","normal"]; }
 
 /* CHART */
-const chart = new Chart(document.getElementById("recordsChart"), {
-  type: 'line',
-  data: {
-    labels: [],
-    datasets: [
-      { label: "BPM", data: [], borderColor: "#f39c12", fill: false },
-      { label: "SpO₂", data: [], borderColor: "#27ae60", fill: false }
+const chart = new Chart(document.getElementById("liveChart"),{
+  type:"line",
+  data:{
+    labels:[],
+    datasets:[
+      {label:"BPM",data:[],borderColor:"#e74c3c",fill:false,tension:0.3},
+      {label:"SpO₂",data:[],borderColor:"#27ae60",fill:false,tension:0.3}
     ]
   },
-  options: {
-    responsive: true,
-    animation: false,
-    scales: { y: { beginAtZero: true } }
+  options:{
+    animation:false,
+    responsive:true,
+    scales:{x:{title:{display:true,text:"Time"}},y:{beginAtZero:true}}
   }
 });
 
-/* LOAD LAST 10 RECORDS */
-function loadRecords() {
-  db.ref("Records").orderByKey().limitToLast(10).once("value", snap => {
-    const records = [];
-    snap.forEach(child => records.push(child.val()));
-    records.reverse(); // newest first
+/* TRACK LAST SAVED */
+let lastSaved = { BPM: null, SpO2: null };
+let recordList = []; // To hold last 10 records
 
-    tableBody.innerHTML = "";
-    records.forEach((record, index) => {
-      const isLatest = index === 0 ? "latest" : "";
-      tableBody.innerHTML += `
-        <tr class="${isLatest}">
-          <td>${record.date}</td>
-          <td>${record.time}</td>
-          <td>${record.BPM}</td>
-          <td>${record.bpmStatus}</td>
-          <td>${record.SpO2}</td>
-          <td>${record.spo2Status}</td>
-        </tr>`;
-    });
+/* LOAD EXISTING RECORDS */
+db.ref("Records").orderByKey().limitToLast(10).once("value", snap=>{
+  snap.forEach(child=>{
+    const r = child.val();
+    recordList.push(r);
+  });
+  recordList.reverse();
+  renderTable();
+});
 
-    // Update chart
-    chart.data.labels = records.map(r => r.time);
-    chart.data.datasets[0].data = records.map(r => r.BPM);
-    chart.data.datasets[1].data = records.map(r => r.SpO2);
-    chart.update();
+/* RENDER TABLE */
+function renderTable(){
+  tableBody.innerHTML = "";
+  recordList.forEach(record=>{
+    tableBody.innerHTML += `
+      <tr>
+        <td>${record.date}</td>
+        <td>${record.time}</td>
+        <td>${record.BPM}</td>
+        <td>${record.bpmStatus}</td>
+        <td>${record.SpO2}</td>
+        <td>${record.spo2Status}</td>
+      </tr>`;
   });
 }
 
-/* AUTO-REFRESH EVERY SECOND */
-setInterval(loadRecords, 1000);
-loadRecords();
+/* LIVE MEASUREMENT */
+db.ref("Live").on("value", snap=>{
+  const d = snap.val();
+  if(!d || !d.BPM || !d.SpO2) return;
+
+  if(d.BPM === 0 || d.SpO2 === 0){
+    lastSaved = { BPM: null, SpO2: null };
+    return;
+  }
+
+  const [bpmText,bpmClass] = bpmStatus(d.BPM);
+  const [spo2Text,spo2Class] = spo2Status(d.SpO2);
+
+  // LIVE DISPLAY
+  liveBPM.innerText = d.BPM;
+  liveSpO2.innerText = d.SpO2;
+  bpmStatusEl.innerText = `(${bpmText})`;
+  bpmStatusEl.className = bpmClass;
+  spo2StatusEl.innerText = `(${spo2Text})`;
+  spo2StatusEl.className = spo2Class;
+
+  alertBar.className = bpmText==="Normal" && spo2Text==="Normal" ? "alert normal" : "alert warning";
+  alertBar.innerText = bpmText==="Normal" && spo2Text==="Normal"
+    ? "✅ Normal Reading"
+    : `⚠️ BPM ${bpmText} | SpO₂ ${spo2Text}`;
+
+  // SAVE AND UPDATE TABLE & CHART ONLY IF CHANGED
+  if(d.BPM !== lastSaved.BPM || d.SpO2 !== lastSaved.SpO2){
+    const now = new Date();
+    const record = {
+      BPM:d.BPM, SpO2:d.SpO2,
+      bpmStatus:bpmText, spo2Status:spo2Text,
+      date:now.toLocaleDateString("en-CA"),
+      time:now.toLocaleTimeString()
+    };
+    db.ref("Records").push(record);
+
+    // Update table
+    recordList.unshift(record);
+    if(recordList.length > 10) recordList.pop();
+    renderTable();
+
+    // Update chart live
+    const timeLabel = record.time;
+    chart.data.labels.push(timeLabel);
+    chart.data.datasets[0].data.push(record.BPM);
+    chart.data.datasets[1].data.push(record.SpO2);
+    if(chart.data.labels.length > 20){
+      chart.data.labels.shift();
+      chart.data.datasets[0].data.shift();
+      chart.data.datasets[1].data.shift();
+    }
+    chart.update();
+
+    lastSaved = { BPM: d.BPM, SpO2: d.SpO2 };
+  }
+});
 </script>
 </body>
 </html>
