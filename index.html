@@ -39,7 +39,7 @@ th { background:#f0f0f0; }
   <canvas id="liveChart"></canvas>
 </div>
 
-<h2>Record Table</h2>
+<h2>Record Table (Last 10 Records)</h2>
 <table>
   <thead>
     <tr><th>Date</th><th>Time</th><th>BPM</th><th>Status</th><th>SpO₂</th><th>Status</th></tr>
@@ -84,7 +84,7 @@ let recordList = [];
 
 // Load last 10 records from Firebase
 db.ref("Records").orderByKey().limitToLast(10).once("value", snap=>{
-  snap.forEach(child=>{ recordList.push(child.val()); });
+  snap.forEach(child=> recordList.push(child.val()));
   recordList.reverse();
   renderTable();
 });
@@ -123,7 +123,6 @@ db.ref("Live").on("value", snap=>{
 
   // Only update if new measurement
   if(d.BPM !== lastSaved.BPM || d.SpO2 !== lastSaved.SpO2){
-    // Normalize keys for table
     const record = {
       date: d.date || new Date().toLocaleDateString("en-CA"),
       time: d.time || new Date().toLocaleTimeString(),
@@ -137,7 +136,6 @@ db.ref("Live").on("value", snap=>{
     if(recordList.length>10) recordList.pop();
     renderTable();
 
-    // Update chart
     chart.data.labels.push(record.time);
     chart.data.datasets[0].data.push(record.BPM);
     chart.data.datasets[1].data.push(record.SpO2);
@@ -154,5 +152,3 @@ db.ref("Live").on("value", snap=>{
 </script>
 </body>
 </html>
-
-
