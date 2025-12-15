@@ -99,12 +99,9 @@ const chart = new Chart(document.getElementById("recordsChart"), {
 function loadRecords() {
   db.ref("Records").orderByKey().limitToLast(10).once("value", snap => {
     const records = [];
-    snap.forEach(child => {
-      records.push(child.val());
-    });
+    snap.forEach(child => records.push(child.val()));
     records.reverse(); // newest first
 
-    // UPDATE TABLE
     tableBody.innerHTML = "";
     records.forEach((record, index) => {
       const isLatest = index === 0 ? "latest" : "";
@@ -119,7 +116,7 @@ function loadRecords() {
         </tr>`;
     });
 
-    // UPDATE CHART
+    // Update chart
     chart.data.labels = records.map(r => r.time);
     chart.data.datasets[0].data = records.map(r => r.BPM);
     chart.data.datasets[1].data = records.map(r => r.SpO2);
@@ -129,8 +126,6 @@ function loadRecords() {
 
 /* AUTO-REFRESH EVERY SECOND */
 setInterval(loadRecords, 1000);
-
-/* INITIAL LOAD */
 loadRecords();
 </script>
 </body>
