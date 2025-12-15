@@ -71,7 +71,7 @@ table {
 th, td { padding: 12px; border-bottom: 1px solid #eee; }
 th { background: #f0f0f0; }
 
-/* Optional: Scrollable table */
+/* Scrollable table */
 tbody {
   display: block;
   max-height: 400px;
@@ -101,7 +101,7 @@ thead, tbody tr {
   <canvas id="liveChart"></canvas>
 </div>
 
-<h2>Record Table</h2>
+<h2>Record Table (Last 10 Records)</h2>
 <table>
   <thead>
     <tr>
@@ -148,19 +148,26 @@ const chart = new Chart(document.getElementById("liveChart"),{
 
 /* LAST SAVED MEASUREMENT */
 let lastSaved = { BPM: null, SpO2: null };
+let recordList = []; // To track last 10 records
 
 /* REAL-TIME TABLE AUTO-UPDATE */
 db.ref("Records").on("child_added", snap=>{
   const r = snap.val();
-  tableBody.innerHTML = `
-    <tr>
-      <td>${r.date}</td>
-      <td>${r.time}</td>
-      <td>${r.BPM}</td>
-      <td>${r.bpmStatus}</td>
-      <td>${r.SpO2}</td>
-      <td>${r.spo2Status}</td>
-    </tr>` + tableBody.innerHTML;
+  recordList.unshift(r); // Add newest to top
+  if(recordList.length > 10) recordList.pop(); // Keep only 10
+
+  tableBody.innerHTML = "";
+  recordList.forEach(record=>{
+    tableBody.innerHTML += `
+      <tr>
+        <td>${record.date}</td>
+        <td>${record.time}</td>
+        <td>${record.BPM}</td>
+        <td>${record.bpmStatus}</td>
+        <td>${record.SpO2}</td>
+        <td>${record.spo2Status}</td>
+      </tr>`;
+  });
 });
 
 /* LIVE MEASUREMENT */
