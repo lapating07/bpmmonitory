@@ -82,6 +82,7 @@ const chart = new Chart(document.getElementById("liveChart"),{
 let lastSaved = {BPM:null, SpO2:null};
 let recordList = [];
 
+// Load last 10 records from Firebase
 db.ref("Records").orderByKey().limitToLast(10).once("value", snap=>{
   snap.forEach(child=>{ recordList.push(child.val()); });
   recordList.reverse();
@@ -92,16 +93,17 @@ function renderTable(){
   tableBody.innerHTML = "";
   recordList.forEach(record=>{
     tableBody.innerHTML += `<tr>
-      <td>${record.date}</td>
-      <td>${record.time}</td>
-      <td>${record.BPM}</td>
-      <td>${record.bpmStatus}</td>
-      <td>${record.SpO2}</td>
-      <td>${record.spo2Status}</td>
+      <td>${record.date||"--"}</td>
+      <td>${record.time||"--"}</td>
+      <td>${record.BPM||"--"}</td>
+      <td>${record.bpmStatus||"--"}</td>
+      <td>${record.SpO2||"--"}</td>
+      <td>${record.spo2Status||"--"}</td>
     </tr>`;
   });
 }
 
+// Listen to live measurement
 db.ref("Live").on("value", snap=>{
   const d = snap.val();
   if(!d || !d.BPM || !d.SpO2) return;
@@ -119,16 +121,26 @@ db.ref("Live").on("value", snap=>{
   alertBar.className = bpmText==="Normal" && spo2Text==="Normal" ? "alert normal" : "alert warning";
   alertBar.innerText = bpmText==="Normal" && spo2Text==="Normal" ? "✅ Normal Reading" : `⚠️ BPM ${bpmText} | SpO₂ ${spo2Text}`;
 
-  // Only add if new reading
+  // Only update if new measurement
   if(d.BPM !== lastSaved.BPM || d.SpO2 !== lastSaved.SpO2){
-    recordList.unshift(d);
+    // Normalize keys for table
+    const record = {
+      date: d.date || new Date().toLocaleDateString("en-CA"),
+      time: d.time || new Date().toLocaleTimeString(),
+      BPM: d.BPM,
+      SpO2: d.SpO2,
+      bpmStatus: bpmText,
+      spo2Status: spo2Text
+    };
+
+    recordList.unshift(record);
     if(recordList.length>10) recordList.pop();
     renderTable();
 
-    const timeLabel = d.time;
-    chart.data.labels.push(timeLabel);
-    chart.data.datasets[0].data.push(d.BPM);
-    chart.data.datasets[1].data.push(d.SpO2);
+    // Update chart
+    chart.data.labels.push(record.time);
+    chart.data.datasets[0].data.push(record.BPM);
+    chart.data.datasets[1].data.push(record.SpO2);
     if(chart.data.labels.length>20){
       chart.data.labels.shift();
       chart.data.datasets[0].data.shift();
